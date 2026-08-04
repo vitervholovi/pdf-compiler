@@ -3,6 +3,7 @@ import fsp from 'fs/promises';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { convertToPdf } from './convert.js';
+import { publicApiPath } from '../utils/publicBase.js';
 
 const previews = new Map();
 const TTL_MS = 60 * 60 * 1000;
@@ -44,7 +45,7 @@ export function createPreviewStore(previewsDir) {
     });
     return {
       previewId: id,
-      url: `/api/preview/${id}/file`
+      url: publicApiPath(`/api/preview/${id}/file`)
     };
   }
 

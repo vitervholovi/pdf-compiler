@@ -13,6 +13,11 @@
 - **client/** — Vue 3 + Vite, передперегляд PDF (pdf.js), watermark UI
 - **server/** — Express: preview, jobs (SSE), LibreOffice/sharp/pdf-lib конвертація і watermark
 
+## Gateway / monorepo
+
+Публічний шлях у TG Service FE: `/pdf-compiler/` (`VITE_BASE`, `PUBLIC_BASE`).
+Сервер приймає і `/api/...`, і `/pdf-compiler/api/...`. Клієнт будує URL через `apiUrl()` / `import.meta.env.BASE_URL`.
+
 ## Ключові потоки
 
 1. Upload → client preview (pdf/image) або `/api/preview` (office/text)

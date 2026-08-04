@@ -5,6 +5,7 @@ import { EventEmitter } from 'events';
 import archiver from 'archiver';
 import { convertToPdf } from './convert.js';
 import { applyWatermark } from './watermark.js';
+import { publicApiPath } from '../utils/publicBase.js';
 
 const jobs = new Map();
 
@@ -186,6 +187,6 @@ async function runJob(job) {
     step: 'completed',
     percent: 100,
     message: 'Готово',
-    downloadUrl: `/api/jobs/${job.id}/download`
+    downloadUrl: publicApiPath(`/api/jobs/${job.id}/download`)
   });
 }

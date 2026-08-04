@@ -5,6 +5,7 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { createJob, getJob } from '../services/jobs.js';
 import { decodeUploadFilename, safeFilename } from '../utils/filenames.js';
+import { publicApiPath } from '../utils/publicBase.js';
 
 export function jobsRouter({ uploadsDir, resultsDir, previewStore }) {
   const router = Router();
@@ -92,7 +93,7 @@ export function jobsRouter({ uploadsDir, resultsDir, previewStore }) {
       status: job.status,
       error: job.error,
       events: job.events,
-      downloadUrl: job.downloadPath ? `/api/jobs/${job.id}/download` : null
+      downloadUrl: job.downloadPath ? publicApiPath(`/api/jobs/${job.id}/download`) : null
     });
   });
 

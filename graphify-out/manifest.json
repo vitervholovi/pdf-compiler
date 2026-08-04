@@ -1,0 +1,182 @@
+{
+  "client/package.json": {
+    "mtime": 1785839454.0,
+    "ast_hash": "c24a23fcfb95900470c42e938762e227",
+    "semantic_hash": ""
+  },
+  "client/src/App.vue": {
+    "mtime": 1785855418.3349645,
+    "ast_hash": "47f7f730dcff89d54dc7426a51ded091",
+    "semantic_hash": ""
+  },
+  "client/src/components/DocumentPreview.vue": {
+    "mtime": 1785844725.0,
+    "ast_hash": "f0ca2e7c1b6d08224ddda73554989c8b",
+    "semantic_hash": ""
+  },
+  "client/src/components/FileUploadZone.vue": {
+    "mtime": 1785844330.0,
+    "ast_hash": "6b030894404bac42d4afe3621421caee",
+    "semantic_hash": ""
+  },
+  "client/src/components/ImageWatermarkSettings.vue": {
+    "mtime": 1785844332.0,
+    "ast_hash": "5f1654d534acd6c241958bd8ff0480db",
+    "semantic_hash": ""
+  },
+  "client/src/components/JobProgress.vue": {
+    "mtime": 1785844325.0,
+    "ast_hash": "875faf6ecf78152ae99db8cd8b6c5950",
+    "semantic_hash": ""
+  },
+  "client/src/components/TextWatermarkSettings.vue": {
+    "mtime": 1785844332.0,
+    "ast_hash": "9a30b327bd95de805376d4f01d00eb22",
+    "semantic_hash": ""
+  },
+  "client/src/main.js": {
+    "mtime": 1785839545.0,
+    "ast_hash": "e9b31e9d07667878fe9f2d9aea0f10c5",
+    "semantic_hash": ""
+  },
+  "client/src/utils/api.js": {
+    "mtime": 1785855402.1650558,
+    "ast_hash": "c988362d9fbbfdbe46728af1238075d5",
+    "semantic_hash": ""
+  },
+  "client/src/utils/files.js": {
+    "mtime": 1785841640.0,
+    "ast_hash": "1001949854bfcbab3ca181bba045df0b",
+    "semantic_hash": ""
+  },
+  "client/src/utils/fonts.js": {
+    "mtime": 1785840890.0,
+    "ast_hash": "7252be60eba19de73c1fb8f7c190ec8b",
+    "semantic_hash": ""
+  },
+  "client/src/utils/previewCache.js": {
+    "mtime": 1785844695.0,
+    "ast_hash": "0b8a7d68d94e12679b04436141925497",
+    "semantic_hash": ""
+  },
+  "client/src/utils/tiling.js": {
+    "mtime": 1785842877.0,
+    "ast_hash": "8b781bd787cf2234451f6efdcac954a5",
+    "semantic_hash": ""
+  },
+  "client/vite.config.js": {
+    "mtime": 1785855404.0624003,
+    "ast_hash": "d5731bbca1210e75df37aa009646c040",
+    "semantic_hash": ""
+  },
+  "package.json": {
+    "mtime": 1785839450.0,
+    "ast_hash": "44c3134a3e40a0355015cdc73d396df2",
+    "semantic_hash": ""
+  },
+  "server/package.json": {
+    "mtime": 1785843211.0,
+    "ast_hash": "8c88f36b1a4d42aca5efe4fc7e5c0500",
+    "semantic_hash": ""
+  },
+  "server/src/index.js": {
+    "mtime": 1785855419.06958,
+    "ast_hash": "27feae5266992e09656eb7ce2bdbe0aa",
+    "semantic_hash": ""
+  },
+  "server/src/routes/jobs.js": {
+    "mtime": 1785855420.9599419,
+    "ast_hash": "c7d9ca0ad4aaea09d32bffd9d4e51fd6",
+    "semantic_hash": ""
+  },
+  "server/src/routes/preview.js": {
+    "mtime": 1785844174.0,
+    "ast_hash": "dfe3136d9fdab96a9e8273141687b43c",
+    "semantic_hash": ""
+  },
+  "server/src/services/convert.js": {
+    "mtime": 1785842929.0,
+    "ast_hash": "0371ed27a3ea8a56b4eb26cc7b68c587",
+    "semantic_hash": ""
+  },
+  "server/src/services/jobs.js": {
+    "mtime": 1785855432.615951,
+    "ast_hash": "988954c8dece24845fb9b09684db6c37",
+    "semantic_hash": ""
+  },
+  "server/src/services/previews.js": {
+    "mtime": 1785855433.0747488,
+    "ast_hash": "1b4539901c99ce9feb48755800c21d06",
+    "semantic_hash": ""
+  },
+  "server/src/services/watermark.js": {
+    "mtime": 1785842895.0,
+    "ast_hash": "3c19ddfaa6853bae3a5cbc004f3f8fcf",
+    "semantic_hash": ""
+  },
+  "server/src/utils/filenames.js": {
+    "mtime": 1785844159.0,
+    "ast_hash": "93ce94374dde7691d64fd7bab5cbd73a",
+    "semantic_hash": ""
+  },
+  "server/src/utils/filenames.test.js": {
+    "mtime": 1785844177.0,
+    "ast_hash": "b67e924393f19ce658137becd118866c",
+    "semantic_hash": ""
+  },
+  "server/src/utils/fonts.js": {
+    "mtime": 1785843219.0,
+    "ast_hash": "bf39769a3a090b5df1e0cb8a437f1b18",
+    "semantic_hash": ""
+  },
+  "server/src/utils/mime.js": {
+    "mtime": 1785839480.0,
+    "ast_hash": "f9a66e1fff4f5da284802dfdd32f7e2c",
+    "semantic_hash": ""
+  },
+  "server/src/utils/mime.test.js": {
+    "mtime": 1785839532.0,
+    "ast_hash": "60910712a65c02e738cc27385cc068a8",
+    "semantic_hash": ""
+  },
+  "server/src/utils/publicBase.js": {
+    "mtime": 1785855403.9314084,
+    "ast_hash": "8d7338950e960c3f7f3b94bf6fce4308",
+    "semantic_hash": ""
+  },
+  "server/src/utils/tiling.js": {
+    "mtime": 1785842876.0,
+    "ast_hash": "f611771605cbda904139d034485fe5bc",
+    "semantic_hash": ""
+  },
+  "server/src/utils/tiling.test.js": {
+    "mtime": 1785843156.0,
+    "ast_hash": "b1bc55eb6178cb143267a774e6055b26",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1785855589.6691856,
+    "ast_hash": "958b8bcca5548cc3de23b2dc799521c6",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1785855440.594357,
+    "ast_hash": "b19817ae87d1362951767fdbc045965c",
+    "semantic_hash": ""
+  },
+  "client/index.html": {
+    "mtime": 1785839537.0,
+    "ast_hash": "fd3f378b363d5d41d8f795c0c87431f2",
+    "semantic_hash": ""
+  },
+  "docker-compose.yml": {
+    "mtime": 1785855441.0073912,
+    "ast_hash": "104d70d48d687eb7e76bab22acff1ce7",
+    "semantic_hash": ""
+  },
+  "graphify/GRAPH_REPORT.md": {
+    "mtime": 1785844739.0,
+    "ast_hash": "b6a48f89c5843d0b457c7a925bfa9dc8",
+    "semantic_hash": ""
+  }
+}
