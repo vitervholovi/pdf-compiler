@@ -59,6 +59,20 @@ export function isPdfFile(name) {
   return extOf(name) === 'pdf';
 }
 
+/** Formats that need server-side quick PDF for document preview */
+export function needsServerPreview(name) {
+  if (isPdfFile(name) || isImageFile(name)) return false;
+  const e = extOf(name);
+  const server = new Set([
+    'doc', 'docx', 'odt', 'rtf',
+    'xls', 'xlsx', 'ods', 'csv',
+    'ppt', 'pptx', 'odp',
+    'txt', 'md', 'json', 'log', 'xml', 'html', 'htm',
+    'djvu', 'djv'
+  ]);
+  return server.has(e);
+}
+
 export function defaultWatermark() {
   return {
     text: {

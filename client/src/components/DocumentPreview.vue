@@ -10,17 +10,18 @@
     </div>
 
     <div class="stage-wrap" ref="wrap">
-      <p v-if="!file" class="hint">Оберіть файл — після швидкої конвертації з’явиться прев’ю PDF.</p>
-      <p v-else-if="file.previewStatus === 'pending' || file.previewStatus === 'converting'" class="hint">
-        Швидка конвертація для передперегляду…
-      </p>
-      <p v-else-if="file.previewStatus === 'error'" class="hint">
-        Не вдалося створити preview: {{ file.previewError || 'помилка' }}
-      </p>
+      <p v-if="statusHint" class="hint">{{ statusHint }}</p>
 
       <div class="stage" :style="stageStyle">
         <canvas ref="canvas" class="page-canvas" v-show="hasPdf" />
-        <div v-if="!hasPdf" class="blank-page" />
+        <img
+          v-if="hasImage && docImageUrl"
+          :src="docImageUrl"
+          class="page-image"
+          alt=""
+          @load="onDocImageLoad"
+        />
+        <div v-if="!hasPdf && !hasImage" class="blank-page" />
 
         <template v-if="wm.text.enabled">
           <div
@@ -108,11 +109,28 @@ const pageCount = ref(0);
 const pageSize = ref({ w: 595.28, h: 841.89 });
 const displayScale = ref(0.85);
 const imagePreviewUrl = ref(null);
+const docImageUrl = ref(null);
 const active = ref(null);
 const hasPdf = ref(false);
+const hasImage = ref(false);
 const handles = ['nw', 'ne', 'sw', 'se'];
 
 const wm = reactive(structuredClone(props.watermark));
+
+const statusHint = computed(() => {
+  const f = props.file;
+  if (!f) return 'Порожня сторінка A4 — можна одразу налаштувати watermark';
+  if (f.previewStatus === 'converting' || f.previewStatus === 'pending') {
+    return 'Швидкий preview ще генерується — watermark уже можна приміряти на порожній сторінці';
+  }
+  if (f.previewStatus === 'error') {
+    return `Preview не створено (${f.previewError || 'помилка'}) — показуємо порожню сторінку`;
+  }
+  if (f.previewStatus === 'unsupported') {
+    return 'Для цього формату точний вміст недоступний — порожня сторінка для watermark';
+  }
+  return '';
+});
 
 let pdfDoc = null;
 let drag = null;
@@ -245,32 +263,86 @@ function fitScale(w, h) {
 
 function resetBlank() {
   hasPdf.value = false;
+  hasImage.value = false;
+  if (docImageUrl.value) {
+    URL.revokeObjectURL(docImageUrl.value);
+    docImageUrl.value = null;
+  }
   pageCount.value = 0;
   page.value = 1;
   pageSize.value = { w: 595.28, h: 841.89 };
   nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
 }
 
+function onDocImageLoad(e) {
+  const img = e.target;
+  pageSize.value = { w: img.naturalWidth || 595, h: img.naturalHeight || 842 };
+  pageCount.value = 1;
+  nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
+}
+
+async function loadPdfFromBuffer(data) {
+  pdfDoc = await pdfjs.getDocument({ data }).promise;
+  pageCount.value = pdfDoc.numPages;
+  page.value = 1;
+  hasPdf.value = true;
+  hasImage.value = false;
+  await nextTick();
+  await renderPage();
+}
+
 async function loadPreview() {
   cleanupPdf();
-  if (!props.file?.previewUrl) {
+  if (docImageUrl.value) {
+    URL.revokeObjectURL(docImageUrl.value);
+    docImageUrl.value = null;
+  }
+  hasImage.value = false;
+  hasPdf.value = false;
+
+  const f = props.file;
+  if (!f) {
     resetBlank();
     return;
   }
-  try {
-    const res = await fetch(props.file.previewUrl);
-    if (!res.ok) throw new Error('preview fetch failed');
-    const data = await res.arrayBuffer();
-    pdfDoc = await pdfjs.getDocument({ data }).promise;
-    pageCount.value = pdfDoc.numPages;
-    page.value = 1;
-    hasPdf.value = true;
-    await nextTick();
-    await renderPage();
-  } catch (err) {
-    console.error(err);
-    resetBlank();
+
+  // Local PDF — never sent to server preview
+  if (f.previewKind === 'local-pdf' && f.file) {
+    try {
+      const data = await f.file.arrayBuffer();
+      await loadPdfFromBuffer(data);
+    } catch (err) {
+      console.error(err);
+      resetBlank();
+    }
+    return;
   }
+
+  // Local image
+  if (f.previewKind === 'local-image' && f.file) {
+    docImageUrl.value = URL.createObjectURL(f.file);
+    hasImage.value = true;
+    pageCount.value = 1;
+    page.value = 1;
+    return;
+  }
+
+  // Server quick PDF ready
+  if (f.previewUrl && f.previewStatus === 'ready') {
+    try {
+      const res = await fetch(f.previewUrl);
+      if (!res.ok) throw new Error('preview fetch failed');
+      const data = await res.arrayBuffer();
+      await loadPdfFromBuffer(data);
+    } catch (err) {
+      console.error(err);
+      resetBlank();
+    }
+    return;
+  }
+
+  // Converting / unsupported / error — blank page, watermark still interactive
+  resetBlank();
 }
 
 async function renderPage() {
@@ -296,7 +368,7 @@ function cleanupPdf() {
 }
 
 watch(
-  () => [props.file?.id, props.file?.previewUrl, props.file?.previewStatus],
+  () => [props.file?.id, props.file?.previewUrl, props.file?.previewStatus, props.file?.previewKind],
   () => loadPreview(),
   { immediate: true }
 );
@@ -401,6 +473,7 @@ function clamp(n, a, b) {
 onBeforeUnmount(() => {
   cleanupPdf();
   if (imagePreviewUrl.value) URL.revokeObjectURL(imagePreviewUrl.value);
+  if (docImageUrl.value) URL.revokeObjectURL(docImageUrl.value);
   window.removeEventListener('pointermove', onMove);
   window.removeEventListener('pointerup', onUp);
 });
@@ -472,6 +545,15 @@ onBeforeUnmount(() => {
   display: block;
   width: 100%;
   height: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+.page-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   pointer-events: none;
   user-select: none;
 }

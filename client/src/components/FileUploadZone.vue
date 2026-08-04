@@ -105,8 +105,9 @@ function previewLabel(f) {
   const map = {
     pending: 'чекає',
     converting: 'preview…',
-    ready: 'preview',
+    ready: f.previewKind === 'local-pdf' || f.previewKind === 'local-image' ? 'локально' : 'preview',
     error: 'помилка',
+    unsupported: 'без вмісту',
     done: 'готово'
   };
   return map[f.previewStatus] || '';

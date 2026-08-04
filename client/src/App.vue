@@ -27,13 +27,13 @@
       <button
         type="button"
         class="btn btn-primary"
-        :disabled="!files.length || busy || !allPreviewsReady"
+        :disabled="!files.length || busy"
         @click="startJob"
       >
         {{ busy ? 'Обробка…' : 'Перетворити' }}
       </button>
-      <span v-if="files.length && !allPreviewsReady" class="wait-hint">
-        Чекаємо швидкий preview…
+      <span v-if="convertingCount" class="wait-hint">
+        Швидкий preview генерується для {{ convertingCount }} файл(ів) — watermark можна налаштовувати вже зараз
       </span>
     </div>
 
@@ -47,7 +47,12 @@ import FileUploadZone from './components/FileUploadZone.vue';
 import WatermarkSettings from './components/WatermarkSettings.vue';
 import DocumentPreview from './components/DocumentPreview.vue';
 import JobProgress from './components/JobProgress.vue';
-import { defaultWatermark } from './utils/files.js';
+import {
+  defaultWatermark,
+  isPdfFile,
+  isImageFile,
+  needsServerPreview
+} from './utils/files.js';
 
 const files = ref([]);
 const selectedId = ref(null);
@@ -60,9 +65,8 @@ let es = null;
 
 const selectedFile = computed(() => files.value.find((f) => f.id === selectedId.value) || null);
 
-const allPreviewsReady = computed(() =>
-  files.value.length > 0
-  && files.value.every((f) => f.previewStatus === 'ready' || f.previewStatus === 'error')
+const convertingCount = computed(() =>
+  files.value.filter((f) => f.previewStatus === 'converting' || f.previewStatus === 'pending').length
 );
 
 async function requestQuickPreview(entry) {
@@ -78,26 +82,51 @@ async function requestQuickPreview(entry) {
     const data = await res.json();
     entry.previewId = data.previewId;
     entry.previewUrl = data.url;
+    entry.previewKind = 'server-pdf';
     entry.previewStatus = 'ready';
   } catch (e) {
     entry.previewStatus = 'error';
     entry.previewError = e.message;
+    entry.previewKind = 'blank';
   }
 }
 
-function onAdd(list) {
-  const added = list.map((file) => ({
+function makeEntry(file) {
+  const entry = {
     id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
     file,
     previewId: null,
     previewUrl: null,
-    previewStatus: 'pending',
+    previewKind: 'blank',
+    previewStatus: 'ready',
     previewError: null
-  }));
+  };
+
+  if (isPdfFile(file.name)) {
+    entry.previewKind = 'local-pdf';
+    entry.previewStatus = 'ready';
+  } else if (isImageFile(file.name)) {
+    entry.previewKind = 'local-image';
+    entry.previewStatus = 'ready';
+  } else if (needsServerPreview(file.name)) {
+    entry.previewKind = 'blank';
+    entry.previewStatus = 'converting';
+  } else {
+    entry.previewKind = 'blank';
+    entry.previewStatus = 'unsupported';
+  }
+
+  return entry;
+}
+
+function onAdd(list) {
+  const added = list.map(makeEntry);
   files.value.push(...added);
   if (!selectedId.value && added[0]) selectedId.value = added[0].id;
   for (const entry of added) {
-    requestQuickPreview(entry);
+    if (entry.previewStatus === 'converting') {
+      requestQuickPreview(entry);
+    }
   }
 }
 
@@ -152,11 +181,13 @@ async function startJob() {
       events.value.push(data);
       if (data.downloadUrl) downloadUrl.value = data.downloadUrl;
       if (data.type === 'completed') {
-        // previews deleted on server — clear client refs
         for (const f of files.value) {
-          f.previewUrl = null;
-          f.previewId = null;
-          f.previewStatus = 'done';
+          if (f.previewKind === 'server-pdf') {
+            f.previewUrl = null;
+            f.previewId = null;
+            f.previewStatus = 'done';
+            f.previewKind = 'blank';
+          }
         }
         busy.value = false;
       }
