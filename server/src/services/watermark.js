@@ -1,7 +1,8 @@
 import fs from 'fs/promises';
 import sharp from 'sharp';
-import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
+import { PDFDocument, rgb, degrees } from 'pdf-lib';
 import { tilePositionsPdf } from '../utils/tiling.js';
+import { resolveWatermarkFont } from '../utils/fonts.js';
 
 function hexToRgb(hex = '#000000') {
   const h = hex.replace('#', '');
@@ -12,18 +13,6 @@ function hexToRgb(hex = '#000000') {
     g: ((n >> 8) & 255) / 255,
     b: (n & 255) / 255
   };
-}
-
-async function loadFont(pdf, fontFamily) {
-  const map = {
-    Helvetica: StandardFonts.Helvetica,
-    'Helvetica-Bold': StandardFonts.HelveticaBold,
-    Times: StandardFonts.TimesRoman,
-    'Times-Bold': StandardFonts.TimesRomanBold,
-    Courier: StandardFonts.Courier
-  };
-  const key = map[fontFamily] || StandardFonts.Helvetica;
-  return pdf.embedFont(key);
 }
 
 /**
@@ -56,7 +45,11 @@ export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
 
   let font = null;
   if (textLayer?.enabled && textLayer.value) {
-    font = await loadFont(pdf, textLayer.fontFamily);
+    font = await resolveWatermarkFont(pdf, {
+      fontFamily: textLayer.fontFamily,
+      bold: textLayer.bold,
+      italic: textLayer.italic
+    });
   }
 
   for (const page of pages) {
@@ -110,8 +103,11 @@ export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
       const opacity = Math.min(Math.max(Number(textLayer.opacity) ?? 0.25, 0), 1);
       const color = hexToRgb(textLayer.color || '#000000');
       const pattern = textLayer.pattern || 'single';
+      const underline = !!textLayer.underline;
       const primaryX = pageW * xPct - textW / 2;
       const primaryY = pageH * (1 - yPct) - textH / 2;
+      const fill = rgb(color.r, color.g, color.b);
+      const rot = degrees(rotation);
 
       const positions = tilePositionsPdf({
         pattern,
@@ -129,10 +125,24 @@ export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
           y: pos.y,
           size: fontSize,
           font,
-          color: rgb(color.r, color.g, color.b),
+          color: fill,
           opacity,
-          rotate: degrees(rotation)
+          rotate: rot
         });
+
+        if (underline) {
+          const thickness = Math.max(0.7, fontSize * 0.055);
+          page.drawRectangle({
+            x: pos.x,
+            y: pos.y - fontSize * 0.14,
+            width: textW,
+            height: thickness,
+            color: fill,
+            opacity,
+            borderWidth: 0,
+            rotate: rot
+          });
+        }
       }
     }
   }

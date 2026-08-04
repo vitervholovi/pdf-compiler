@@ -89,6 +89,7 @@ import { computed, ref, watch, onBeforeUnmount, nextTick, reactive } from 'vue';
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { tileGhostsFromPrimary } from '../utils/tiling.js';
+import { fontCssFamily } from '../utils/fonts.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -210,12 +211,10 @@ const textVisualStyle = computed(() => {
     color: wm.text.color,
     opacity: wm.text.opacity,
     fontSize: `${fontPx}px`,
-    fontFamily: wm.text.fontFamily?.includes('Times')
-      ? 'Times New Roman, Times, serif'
-      : wm.text.fontFamily?.includes('Courier')
-        ? 'Courier New, monospace'
-        : 'Helvetica, Arial, sans-serif',
-    fontWeight: wm.text.fontFamily?.includes('Bold') ? '700' : '400',
+    fontFamily: fontCssFamily(wm.text.fontFamily),
+    fontWeight: wm.text.bold ? '700' : '400',
+    fontStyle: wm.text.italic ? 'italic' : 'normal',
+    textDecoration: wm.text.underline ? 'underline' : 'none',
     transform: `rotate(${wm.text.transform.rotationDeg || 0}deg)`
   };
 });

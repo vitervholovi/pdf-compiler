@@ -36,12 +36,34 @@
             :value="modelValue.text.fontFamily"
             @change="patchText({ fontFamily: $event.target.value })"
           >
-            <option>Helvetica</option>
-            <option>Helvetica-Bold</option>
-            <option>Times</option>
-            <option>Times-Bold</option>
-            <option>Courier</option>
+            <option v-for="f in fontOptions" :key="f.id" :value="f.id">{{ f.label }}</option>
           </select>
+        </div>
+        <div class="style-row">
+          <label class="style-btn" :class="{ on: modelValue.text.bold }">
+            <input
+              type="checkbox"
+              :checked="!!modelValue.text.bold"
+              @change="patchText({ bold: $event.target.checked })"
+            />
+            <span><b>B</b></span>
+          </label>
+          <label class="style-btn" :class="{ on: modelValue.text.italic }">
+            <input
+              type="checkbox"
+              :checked="!!modelValue.text.italic"
+              @change="patchText({ italic: $event.target.checked })"
+            />
+            <span><i>I</i></span>
+          </label>
+          <label class="style-btn" :class="{ on: modelValue.text.underline }">
+            <input
+              type="checkbox"
+              :checked="!!modelValue.text.underline"
+              @change="patchText({ underline: $event.target.checked })"
+            />
+            <span><u>U</u></span>
+          </label>
         </div>
         <div class="field">
           <label>Колір</label>
@@ -130,6 +152,7 @@
 
 <script setup>
 import { ref, watch } from 'vue';
+import { FONT_OPTIONS } from '../utils/fonts.js';
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -138,6 +161,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'update:watermarkImageFile']);
 
+const fontOptions = FONT_OPTIONS;
 const imageName = ref(props.watermarkImageFile?.name || '');
 
 watch(
@@ -185,6 +209,41 @@ h2 {
   border-top: 1px solid var(--border);
   padding-top: 12px;
   margin-top: 4px;
+}
+
+.style-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.style-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+
+  input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  span {
+    font-size: 0.95rem;
+  }
+
+  &.on {
+    border-color: var(--accent);
+    background: #e8f2ed;
+    color: var(--accent);
+  }
 }
 
 .image-name {
