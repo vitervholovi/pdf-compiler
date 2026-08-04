@@ -2,9 +2,12 @@
 
 Веб-інтерфейс для завантаження документів, накладання watermark (текст + зображення) і конвертації в PDF.
 
+Окремий репозиторій: не входить у TG Service FE.
+
 ## Швидкий старт (Docker)
 
 ```bash
+cd ~/Documents/Projects/pdf-compiler   # або ваш шлях
 docker compose up --build
 ```
 
@@ -30,3 +33,7 @@ npm run dev
 - Resize watermark: Shift — пропорційно, Alt — від центру; розмір тексту синхронізується з fontSize
 - Фоновий job з детальним прогресом (SSE) і ZIP-архівом результату
 - Convert і watermark незалежні: для вже готових PDF watermark працює без конвертації
+
+## Репозиторій
+
+https://github.com/vitervholovi/pdf-compiler (private)
