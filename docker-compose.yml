@@ -1,0 +1,11 @@
+services:
+  pdf-compiler:
+    build: .
+    ports:
+      - "3080:3080"
+    volumes:
+      - pdf_data:/app/server/data
+    restart: unless-stopped
+
+volumes:
+  pdf_data:

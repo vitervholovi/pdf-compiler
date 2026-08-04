@@ -1,0 +1,13 @@
+node_modules/
+dist/
+uploads/
+results/
+tmp/
+.env
+*.log
+.DS_Store
+coverage/
+.vite/
+client/dist/
+server/data/
+*.zip
