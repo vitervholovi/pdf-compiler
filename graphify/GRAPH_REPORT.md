@@ -10,6 +10,7 @@ flowchart LR
   UI --> TextWM[TextWatermarkSettings]
   UI --> ImgWM[ImageWatermarkSettings]
   UI --> JobsUI[JobProgress]
+  UI --> WmIO[utils/watermarkIo.js]
   Preview --> TileC[client/utils/tiling.js]
   Preview --> PdfJS[pdfjs-dist]
   UI -->|POST /api/preview| PrevR[routes/preview.js]
@@ -25,16 +26,30 @@ flowchart LR
   WM --> Fonts
 ```
 
+## Watermark settings
+
+| Field | Text | Image |
+|-------|------|-------|
+| multiline | textarea (`\n`) | — |
+| align | left / center / right / justify | — |
+| placements | `portrait` + `landscape` slots (transform, spacing, fontSize) | same (no fontSize) |
+| spacingX / spacingY | may be negative (overlap); step clamped ≥ 1 | same |
+| save/load | JSON via `watermarkIo.js` (image → base64) | same |
+
+Page `/Rotate` is handled via CTM in `server/utils/pageCoords.js` (`withVisualCoords`) so draws use visual coords; tiling keeps edge-overlapping copies (rotated AABB).
+UI: «Позиція WM» = Авто / Книжкова / Альбомна.
+
 ## Tiling patterns
 
 | pattern   | spacing                         | layout        |
 |-----------|---------------------------------|---------------|
 | single    | —                               | one copy      |
-| tile      | dense (~1.1× AABB)              | regular       |
-| grid      | sparse (~2.05× AABB)            | regular       |
-| diagonal  | medium + brick offset           | odd rows +½x  |
+| tile      | dense (~1.1× AABB) + spacingX/Y | regular       |
+| grid      | sparse (~2.05× AABB) + spacing  | regular       |
+| diagonal  | medium + brick offset + spacing | odd rows +½x  |
 
 Overflow: tiles that **intersect** the page are kept; page/stage clips them.
+PDF tiling: positive row index decreases `y` (visual down, matches CSS).
 
 ## Styles
 

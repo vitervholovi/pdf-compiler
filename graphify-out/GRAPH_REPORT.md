@@ -1,16 +1,16 @@
 # Graph Report - pdf-compiler  (2026-08-04)
 
 ## Corpus Check
-- 34 files · ~10,505 words
+- 35 files · ~11,854 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 291 nodes · 458 edges · 17 communities
+- 308 nodes · 492 edges · 17 communities
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 8 edges (avg confidence: 0.5)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `427139be`
+- Built from commit: `a643da97`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -35,26 +35,26 @@
 ## God Nodes (most connected - your core abstractions)
 1. `convertToPdf()` - 14 edges
 2. `loadPreview()` - 10 edges
-3. `fileCategory()` - 9 edges
-4. `makeEntry()` - 7 edges
-5. `runJob()` - 7 edges
-6. `decodeUploadFilename()` - 7 edges
-7. `extOf()` - 7 edges
-8. `publicApiPath()` - 7 edges
-9. `onMove()` - 6 edges
-10. `onUp()` - 6 edges
+3. `applyWatermark()` - 10 edges
+4. `fileCategory()` - 9 edges
+5. `makeEntry()` - 7 edges
+6. `runJob()` - 7 edges
+7. `decodeUploadFilename()` - 7 edges
+8. `extOf()` - 7 edges
+9. `publicApiPath()` - 7 edges
+10. `onMove()` - 6 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `makeEntry()` --calls--> `cacheLocalImage()`  [EXTRACTED]
-  client/src/App.vue → client/src/utils/previewCache.js
-- `makeEntry()` --calls--> `cacheLocalPdf()`  [EXTRACTED]
-  client/src/App.vue → client/src/utils/previewCache.js
+- `loadPreview()` --calls--> `cacheLocalImage()`  [EXTRACTED]
+  pdf-compiler/client/src/components/DocumentPreview.vue → pdf-compiler/client/src/utils/previewCache.js
+- `loadPreview()` --calls--> `cacheLocalPdf()`  [EXTRACTED]
+  pdf-compiler/client/src/components/DocumentPreview.vue → pdf-compiler/client/src/utils/previewCache.js
 - `loadPreview()` --calls--> `cacheServerPreview()`  [EXTRACTED]
-  client/src/components/DocumentPreview.vue → client/src/utils/previewCache.js
+  pdf-compiler/client/src/components/DocumentPreview.vue → pdf-compiler/client/src/utils/previewCache.js
 - `convertTextToPdf()` --calls--> `resolveDocumentFont()`  [EXTRACTED]
-  server/src/services/convert.js → server/src/utils/fonts.js
+  pdf-compiler/server/src/services/convert.js → pdf-compiler/server/src/utils/fonts.js
 - `runJob()` --calls--> `convertToPdf()`  [EXTRACTED]
-  server/src/services/jobs.js → server/src/services/convert.js
+  pdf-compiler/server/src/services/jobs.js → pdf-compiler/server/src/services/convert.js
 
 ## Import Cycles
 - None detected.
@@ -62,12 +62,12 @@
 ## Communities (17 total, 0 thin omitted)
 
 ### Community 0 - "DocumentPreview.vue"
-Cohesion: 0.05
-Nodes (50): active, cancelRender(), canvas, clamp(), cleanupPdf(), clonePlain(), commitWm(), displayScale (+42 more)
+Cohesion: 0.06
+Nodes (45): active, cancelRender(), canvas, clamp(), cleanupPdf(), clonePlain(), commitWm(), displayScale (+37 more)
 
 ### Community 1 - "App.vue"
-Cohesion: 0.10
-Nodes (30): bottomBar, busy, convertingCount, downloadUrl, enqueuePreview(), events, files, makeEntry() (+22 more)
+Cohesion: 0.07
+Nodes (44): bottomBar, busy, convertingCount, downloadUrl, enqueuePreview(), events, files, makeEntry() (+36 more)
 
 ### Community 2 - "index.js"
 Cohesion: 0.12
@@ -82,16 +82,16 @@ Cohesion: 0.09
 Nodes (22): dependencies, @iconify/vue, pdfjs-dist, vue, devDependencies, sass, vite, @vitejs/plugin-vue (+14 more)
 
 ### Community 5 - "fonts.js"
-Cohesion: 0.18
-Nodes (18): applyWatermark(), hexToRgb(), embedTtfFamily(), ensureFontkit(), findTtf(), FONT_DIRS, fontkitRegistered, needsUnicodeFont() (+10 more)
+Cohesion: 0.15
+Nodes (23): applyWatermark(), drawAlignedLine(), hexToRgb(), lineWidth(), measureTextBlock(), pdfRotation(), splitLines(), embedTtfFamily() (+15 more)
 
 ### Community 6 - "convert.js"
 Cohesion: 0.25
 Nodes (18): CALC_EXT, convertDjvuToPdf(), convertImageToPdf(), convertTextToPdf(), convertToPdf(), convertWithLibreOffice(), enqueueLibreOffice(), libreOfficeChain (+10 more)
 
 ### Community 7 - "FileUploadZone.vue"
-Cohesion: 0.17
-Nodes (11): dragover, emit, input, meta(), onDrop(), onPick(), props, remove() (+3 more)
+Cohesion: 0.15
+Nodes (12): dragover, emit, input, meta(), onDrop(), onPick(), props, remove() (+4 more)
 
 ### Community 8 - "package.json"
 Cohesion: 0.12
@@ -126,7 +126,7 @@ Cohesion: 0.40
 Nodes (4): Overview, PDF Compiler — module graph, Styles, Tiling patterns
 
 ## Knowledge Gaps
-- **118 isolated node(s):** `name`, `version`, `private`, `type`, `dev` (+113 more)
+- **120 isolated node(s):** `name`, `version`, `private`, `type`, `dev` (+115 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 
 ## Suggested Questions
@@ -135,13 +135,13 @@ _Questions this graph is uniquely positioned to answer:_
 - **Why does `convertToPdf()` connect `convert.js` to `index.js`?**
   _High betweenness centrality (0.007) - this node is a cross-community bridge._
 - **Why does `applyWatermark()` connect `fonts.js` to `index.js`?**
-  _High betweenness centrality (0.004) - this node is a cross-community bridge._
+  _High betweenness centrality (0.006) - this node is a cross-community bridge._
 - **What connects `name`, `version`, `private` to the rest of the system?**
-  _118 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _120 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `DocumentPreview.vue` be split into smaller, more focused modules?**
-  _Cohesion score 0.05388471177944862 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06037414965986394 - nodes in this community are weakly interconnected._
 - **Should `App.vue` be split into smaller, more focused modules?**
-  _Cohesion score 0.10160427807486631 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06748911465892599 - nodes in this community are weakly interconnected._
 - **Should `index.js` be split into smaller, more focused modules?**
   _Cohesion score 0.12121212121212122 - nodes in this community are weakly interconnected._
 - **Should `dependencies` be split into smaller, more focused modules?**

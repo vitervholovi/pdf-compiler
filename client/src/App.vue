@@ -20,20 +20,66 @@
     />
 
     <div class="workspace">
-      <TextWatermarkSettings v-model="watermark" />
+      <TextWatermarkSettings v-model="watermark" :orientation="editOrientation" />
       <ImageWatermarkSettings
         v-model="watermark"
         v-model:watermark-image-file="watermarkImageFile"
+        :orientation="editOrientation"
       />
       <DocumentPreview
         :file="selectedFile"
         v-model:watermark="watermark"
         :watermark-image-file="watermarkImageFile"
+        :edit-orientation="orientationMode === 'auto' ? null : orientationMode"
+        @update:pageOrientation="onPageOrientation"
       />
     </div>
 
     <div class="bottom-bar" ref="bottomBar">
       <div class="convert-row">
+        <div class="wm-io">
+          <div class="ori-switch" role="group" aria-label="Орієнтація налаштувань">
+            <span class="ori-label">Позиція WM:</span>
+            <button
+              type="button"
+              class="btn"
+              :class="{ active: orientationMode === 'auto' }"
+              @click="orientationMode = 'auto'"
+            >
+              Авто ({{ pageOrientation === 'landscape' ? 'альбом' : 'книга' }})
+            </button>
+            <button
+              type="button"
+              class="btn"
+              :class="{ active: orientationMode === 'portrait' }"
+              @click="orientationMode = 'portrait'"
+            >
+              Книжкова
+            </button>
+            <button
+              type="button"
+              class="btn"
+              :class="{ active: orientationMode === 'landscape' }"
+              @click="orientationMode = 'landscape'"
+            >
+              Альбомна
+            </button>
+          </div>
+          <button type="button" class="btn" :disabled="busy" @click="saveWatermarkSettings">
+            Зберегти watermark
+          </button>
+          <button type="button" class="btn" :disabled="busy" @click="triggerLoadWatermark">
+            Завантажити watermark
+          </button>
+          <input
+            ref="wmImportInput"
+            type="file"
+            accept="application/json,.json"
+            class="sr-only"
+            @change="onLoadWatermark"
+          />
+          <span v-if="wmIoError" class="wm-io-error">{{ wmIoError }}</span>
+        </div>
         <button
           type="button"
           class="btn btn-primary"
@@ -57,6 +103,7 @@ import DocumentPreview from './components/DocumentPreview.vue';
 import JobProgress from './components/JobProgress.vue';
 import {
   defaultWatermark,
+  normalizeWatermark,
   isPdfFile,
   isImageFile,
   needsServerPreview
@@ -67,17 +114,72 @@ import {
   cacheLocalImage,
   releasePreviewCache
 } from './utils/previewCache.js';
+import {
+  buildWatermarkExport,
+  downloadWatermarkJson,
+  parseWatermarkImport
+} from './utils/watermarkIo.js';
 import { apiUrl } from './utils/api.js';
 
 const files = ref([]);
 const selectedId = ref(null);
-const watermark = ref(defaultWatermark());
+const watermark = ref(normalizeWatermark(defaultWatermark()));
 const watermarkImageFile = ref(null);
 const events = ref([]);
 const downloadUrl = ref(null);
 const busy = ref(false);
 const bottomBar = ref(null);
+const wmImportInput = ref(null);
+const wmIoError = ref('');
+/** 'auto' | 'portrait' | 'landscape' */
+const orientationMode = ref('auto');
+const pageOrientation = ref('portrait');
 let es = null;
+
+const editOrientation = computed(() =>
+  orientationMode.value === 'auto' ? pageOrientation.value : orientationMode.value
+);
+
+function onPageOrientation(ori) {
+  pageOrientation.value = ori === 'landscape' ? 'landscape' : 'portrait';
+}
+
+async function saveWatermarkSettings() {
+  wmIoError.value = '';
+  try {
+    const payload = await buildWatermarkExport(watermark.value, watermarkImageFile.value);
+    downloadWatermarkJson(payload);
+  } catch (e) {
+    wmIoError.value = e.message || String(e);
+  }
+}
+
+function triggerLoadWatermark() {
+  wmIoError.value = '';
+  wmImportInput.value?.click();
+}
+
+async function onLoadWatermark(e) {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  wmIoError.value = '';
+  try {
+    const { watermark: loaded, imageFile } = await parseWatermarkImport(file);
+    watermark.value = normalizeWatermark(loaded);
+    if (imageFile) {
+      watermarkImageFile.value = imageFile;
+      if (!watermark.value.image.enabled) {
+        watermark.value = {
+          ...watermark.value,
+          image: { ...watermark.value.image, enabled: true }
+        };
+      }
+    }
+  } catch (err) {
+    wmIoError.value = err.message || String(err);
+  }
+}
 
 const selectedFile = computed(() => files.value.find((f) => f.id === selectedId.value) || null);
 

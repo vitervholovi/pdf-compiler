@@ -1,6 +1,10 @@
 <template>
   <aside class="settings panel settings-image">
     <h2>Зображення</h2>
+    <p class="ori-hint">
+      Позиція:
+      <strong>{{ orientation === 'landscape' ? 'альбомна' : 'книжкова' }}</strong>
+    </p>
     <label class="toggle-row">
       <input
         type="checkbox"
@@ -46,21 +50,37 @@
           <option value="grid">Сітка</option>
         </select>
       </div>
+      <div v-if="modelValue.image.pattern !== 'single'" class="spacing-fields">
+        <SpacingControl
+          label="Відстань X"
+          :model-value="placement.spacingX ?? 0"
+          @update:model-value="patchPlacement({ spacingX: $event })"
+        />
+        <SpacingControl
+          label="Відстань Y"
+          :model-value="placement.spacingY ?? 0"
+          @update:model-value="patchPlacement({ spacingY: $event })"
+        />
+      </div>
     </template>
   </aside>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
+import { getImagePlacement } from '../utils/watermarkModel.js';
+import SpacingControl from './SpacingControl.vue';
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
-  watermarkImageFile: { type: File, default: null }
+  watermarkImageFile: { type: File, default: null },
+  orientation: { type: String, default: 'portrait' }
 });
 
 const emit = defineEmits(['update:modelValue', 'update:watermarkImageFile']);
 
 const imageName = ref(props.watermarkImageFile?.name || '');
+const placement = computed(() => getImagePlacement(props.modelValue.image, props.orientation));
 
 watch(
   () => props.watermarkImageFile,
@@ -73,6 +93,22 @@ function patchImage(partial) {
   emit('update:modelValue', {
     ...props.modelValue,
     image: { ...props.modelValue.image, ...partial }
+  });
+}
+
+function patchPlacement(partial) {
+  const ori = props.orientation === 'landscape' ? 'landscape' : 'portrait';
+  const cur = getImagePlacement(props.modelValue.image, ori);
+  emit('update:modelValue', {
+    ...props.modelValue,
+    image: {
+      ...props.modelValue.image,
+      [ori]: {
+        ...cur,
+        ...partial,
+        transform: { ...cur.transform, ...(partial.transform || {}) }
+      }
+    }
   });
 }
 

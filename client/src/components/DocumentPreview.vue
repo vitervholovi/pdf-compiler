@@ -33,7 +33,7 @@
             class="wm ghost"
             :style="boxPosStyle(pos)"
           >
-            <span class="wm-visual" :style="textVisualStyle">{{ wm.text.value }}</span>
+            <span class="wm-visual wm-text" :style="textVisualStyle">{{ wm.text.value }}</span>
           </div>
         </template>
         <template v-if="wm.image.enabled && imagePreviewUrl">
@@ -54,7 +54,7 @@
           :style="boxPosStyle(textPrimary)"
           @pointerdown="onPrimaryDown($event, 'text')"
         >
-          <span class="wm-visual" :style="textVisualStyle">{{ wm.text.value || ' ' }}</span>
+          <span class="wm-visual wm-text" :style="textVisualStyle">{{ wm.text.value || ' ' }}</span>
           <span
             v-for="h in handles"
             :key="'th-' + h"
@@ -105,6 +105,11 @@ import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { tileGhostsFromPrimary } from '../utils/tiling.js';
 import { fontCssFamily } from '../utils/fonts.js';
 import {
+  pageOrientation,
+  getTextPlacement,
+  getImagePlacement
+} from '../utils/watermarkModel.js';
+import {
   hasCachedPdf,
   takePdfCopy,
   cacheLocalPdf,
@@ -122,10 +127,12 @@ function clonePlain(value) {
 const props = defineProps({
   file: { type: Object, default: null },
   watermark: { type: Object, required: true },
-  watermarkImageFile: { type: File, default: null }
+  watermarkImageFile: { type: File, default: null },
+  /** When set, preview edits this orientation slot instead of auto page orientation */
+  editOrientation: { type: String, default: null }
 });
 
-const emit = defineEmits(['update:watermark']);
+const emit = defineEmits(['update:watermark', 'update:pageOrientation']);
 
 const wrap = ref(null);
 const canvas = ref(null);
@@ -142,6 +149,34 @@ const handles = ['nw', 'ne', 'sw', 'se'];
 const stageReady = ref(false);
 
 const wm = reactive(clonePlain(props.watermark));
+
+const pageOri = computed(() => pageOrientation(pageSize.value.w, pageSize.value.h));
+const orientation = computed(() =>
+  props.editOrientation === 'landscape' || props.editOrientation === 'portrait'
+    ? props.editOrientation
+    : pageOri.value
+);
+
+watch(
+  pageOri,
+  (v) => emit('update:pageOrientation', v),
+  { immediate: true }
+);
+
+function textPlace() {
+  return getTextPlacement(wm.text, orientation.value);
+}
+
+function imagePlace() {
+  return getImagePlacement(wm.image, orientation.value);
+}
+
+function ensureSlots() {
+  if (!wm.text.portrait) wm.text.portrait = getTextPlacement(wm.text, 'portrait');
+  if (!wm.text.landscape) wm.text.landscape = getTextPlacement(wm.text, 'landscape');
+  if (!wm.image.portrait) wm.image.portrait = getImagePlacement(wm.image, 'portrait');
+  if (!wm.image.landscape) wm.image.landscape = getImagePlacement(wm.image, 'landscape');
+}
 
 const statusHint = computed(() => {
   const f = props.file;
@@ -172,10 +207,13 @@ watch(
     syncingFromParent = true;
     Object.assign(wm.text, clonePlain(v.text));
     Object.assign(wm.image, clonePlain(v.image));
+    ensureSlots();
     syncingFromParent = false;
   },
   { deep: true }
 );
+
+ensureSlots();
 
 function commitWm() {
   if (syncingFromParent) return;
@@ -195,22 +233,27 @@ const stageW = computed(() => pageSize.value.w * displayScale.value);
 const stageH = computed(() => pageSize.value.h * displayScale.value);
 
 function textMetrics() {
-  const fontPx = (wm.text.fontSizePt || 48) * displayScale.value * (96 / 72);
+  const place = textPlace();
+  const fontPx = (place.fontSizePt || 48) * displayScale.value * (96 / 72);
+  const lines = String(wm.text.value ?? '').replace(/\r\n/g, '\n').split('\n');
+  const maxLen = Math.max(1, ...lines.map((l) => l.length));
+  const lineH = fontPx * 1.25;
   return {
-    w: Math.max(48, (wm.text.value?.length || 1) * fontPx * 0.55),
-    h: Math.max(28, fontPx * 1.3),
+    w: Math.max(48, maxLen * fontPx * 0.55),
+    h: Math.max(28, lines.length * lineH),
     fontPx
   };
 }
 
 function imageMetrics() {
-  const w = stageW.value * (wm.image.transform.wPct || 0.35);
+  const place = imagePlace();
+  const w = stageW.value * (place.transform.wPct || 0.35);
   return { w, h: Math.max(24, w * 0.75) };
 }
 
 const textPrimary = computed(() => {
   const { w, h } = textMetrics();
-  const t = wm.text.transform;
+  const t = textPlace().transform;
   return {
     left: stageW.value * t.xPct - w / 2,
     top: stageH.value * t.yPct - h / 2,
@@ -221,7 +264,7 @@ const textPrimary = computed(() => {
 
 const imagePrimary = computed(() => {
   const { w, h } = imageMetrics();
-  const t = wm.image.transform;
+  const t = imagePlace().transform;
   return {
     left: stageW.value * t.xPct - w / 2,
     top: stageH.value * t.yPct - h / 2,
@@ -232,6 +275,8 @@ const imagePrimary = computed(() => {
 
 const textGhosts = computed(() => {
   const p = textPrimary.value;
+  const place = textPlace();
+  const scale = displayScale.value || 1;
   return tileGhostsFromPrimary({
     pattern: wm.text.pattern,
     pageW: stageW.value,
@@ -240,12 +285,16 @@ const textGhosts = computed(() => {
     primaryTop: p.top,
     boxW: p.w,
     boxH: p.h,
-    rotationDeg: wm.text.transform.rotationDeg || 0
+    rotationDeg: place.transform.rotationDeg || 0,
+    spacingX: (Number(place.spacingX) || 0) * scale,
+    spacingY: (Number(place.spacingY) || 0) * scale
   });
 });
 
 const imageGhosts = computed(() => {
   const p = imagePrimary.value;
+  const place = imagePlace();
+  const scale = displayScale.value || 1;
   return tileGhostsFromPrimary({
     pattern: wm.image.pattern,
     pageW: stageW.value,
@@ -254,12 +303,16 @@ const imageGhosts = computed(() => {
     primaryTop: p.top,
     boxW: p.w,
     boxH: p.h,
-    rotationDeg: wm.image.transform.rotationDeg || 0
+    rotationDeg: place.transform.rotationDeg || 0,
+    spacingX: (Number(place.spacingX) || 0) * scale,
+    spacingY: (Number(place.spacingY) || 0) * scale
   });
 });
 
 const textVisualStyle = computed(() => {
   const { fontPx } = textMetrics();
+  const place = textPlace();
+  const align = wm.text.align || 'center';
   return {
     color: wm.text.color,
     opacity: wm.text.opacity,
@@ -268,18 +321,22 @@ const textVisualStyle = computed(() => {
     fontWeight: wm.text.bold ? '700' : '400',
     fontStyle: wm.text.italic ? 'italic' : 'normal',
     textDecoration: wm.text.underline ? 'underline' : 'none',
-    transform: `rotate(${wm.text.transform.rotationDeg || 0}deg)`
+    textAlign: align,
+    transform: `rotate(${place.transform.rotationDeg || 0}deg)`
   };
 });
 
-const imageVisualStyle = computed(() => ({
-  opacity: wm.image.opacity,
-  filter: wm.image.grayscale ? 'grayscale(1)' : 'none',
-  width: '100%',
-  height: '100%',
-  objectFit: 'contain',
-  transform: `rotate(${wm.image.transform.rotationDeg || 0}deg)`
-}));
+const imageVisualStyle = computed(() => {
+  const place = imagePlace();
+  return {
+    opacity: wm.image.opacity,
+    filter: wm.image.grayscale ? 'grayscale(1)' : 'none',
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+    transform: `rotate(${place.transform.rotationDeg || 0}deg)`
+  };
+});
 
 function boxPosStyle(pos) {
   return {
@@ -506,10 +563,12 @@ function onPrimaryDown(e, kind) {
   e.preventDefault();
   e.stopPropagation();
   active.value = kind;
-  const t = wm[kind].transform;
+  ensureSlots();
+  const t = kind === 'text' ? textPlace().transform : imagePlace().transform;
   drag = {
     mode: 'move',
     kind,
+    ori: orientation.value,
     startX: e.clientX,
     startY: e.clientY,
     origX: t.xPct,
@@ -524,14 +583,17 @@ function onResizeDown(e, kind, handle) {
   e.preventDefault();
   e.stopPropagation();
   active.value = kind;
-  const t = wm[kind].transform;
+  ensureSlots();
+  const place = kind === 'text' ? textPlace() : imagePlace();
+  const t = place.transform;
   drag = {
     mode: 'resize',
     kind,
+    ori: orientation.value,
     handle,
     startX: e.clientX,
     startY: e.clientY,
-    origW: kind === 'image' ? t.wPct : wm.text.fontSizePt,
+    origW: kind === 'image' ? t.wPct : place.fontSizePt,
     origX: t.xPct,
     origY: t.yPct,
     alt: e.altKey,
@@ -546,19 +608,22 @@ function onRotateDown(e, kind) {
   e.preventDefault();
   e.stopPropagation();
   active.value = kind;
+  ensureSlots();
   const stageEl = e.currentTarget.closest('.stage');
   const rect = stageEl?.getBoundingClientRect();
   const primary = kind === 'text' ? textPrimary.value : imagePrimary.value;
   const cx = (rect?.left || 0) + primary.left + primary.w / 2;
   const cy = (rect?.top || 0) + primary.top + primary.h / 2;
   const pointerAngle = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
+  const place = kind === 'text' ? textPlace() : imagePlace();
   drag = {
     mode: 'rotate',
     kind,
+    ori: orientation.value,
     cx,
     cy,
     startAngle: pointerAngle,
-    origRot: Number(wm[kind].transform.rotationDeg) || 0
+    origRot: Number(place.transform.rotationDeg) || 0
   };
   e.currentTarget.setPointerCapture?.(e.pointerId);
   window.addEventListener('pointermove', onMove);
@@ -571,19 +636,20 @@ function onMove(e) {
   const dy = e.clientY - drag.startY;
   const sw = stageW.value || 1;
   const sh = stageH.value || 1;
+  const ori = drag.ori === 'landscape' ? 'landscape' : 'portrait';
+  ensureSlots();
 
   if (drag.mode === 'move') {
-    wm[drag.kind].transform.xPct = clamp(drag.origX + dx / sw, 0.02, 0.98);
-    wm[drag.kind].transform.yPct = clamp(drag.origY + dy / sh, 0.02, 0.98);
+    wm[drag.kind][ori].transform.xPct = clamp(drag.origX + dx / sw, 0.02, 0.98);
+    wm[drag.kind][ori].transform.yPct = clamp(drag.origY + dy / sh, 0.02, 0.98);
     return;
   }
 
   if (drag.mode === 'rotate') {
     const angle = (Math.atan2(e.clientY - drag.cy, e.clientX - drag.cx) * 180) / Math.PI;
     let next = drag.origRot + (angle - drag.startAngle);
-    // normalize to [-180, 180]
     next = ((next + 180) % 360 + 360) % 360 - 180;
-    wm[drag.kind].transform.rotationDeg = Math.round(next);
+    wm[drag.kind][ori].transform.rotationDeg = Math.round(next);
     return;
   }
 
@@ -591,17 +657,17 @@ function onMove(e) {
   const alt = e.altKey || drag.alt;
   if (drag.kind === 'image') {
     const nextW = clamp(drag.origW + (dx * signX) / sw, 0.05, 1);
-    wm.image.transform.wPct = nextW;
+    wm.image[ori].transform.wPct = nextW;
     if (!alt) {
       const dw = nextW - drag.origW;
       if (drag.handle.includes('e')) {
-        wm.image.transform.xPct = clamp(drag.origX + dw / 2, 0.02, 0.98);
+        wm.image[ori].transform.xPct = clamp(drag.origX + dw / 2, 0.02, 0.98);
       } else if (drag.handle.includes('w')) {
-        wm.image.transform.xPct = clamp(drag.origX - dw / 2, 0.02, 0.98);
+        wm.image[ori].transform.xPct = clamp(drag.origX - dw / 2, 0.02, 0.98);
       }
     }
   } else {
-    wm.text.fontSizePt = clamp(Math.round(drag.origW + dx * signX * 0.25), 6, 200);
+    wm.text[ori].fontSizePt = clamp(Math.round(drag.origW + dx * signX * 0.25), 6, 200);
   }
 }
 

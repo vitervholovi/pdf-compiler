@@ -73,27 +73,11 @@ export function needsServerPreview(name) {
   return server.has(e);
 }
 
-export function defaultWatermark() {
-  return {
-    text: {
-      enabled: true,
-      value: 'CONFIDENTIAL',
-      fontFamily: 'Helvetica',
-      fontSizePt: 48,
-      bold: true,
-      italic: false,
-      underline: false,
-      color: '#000000',
-      opacity: 0.25,
-      pattern: 'single',
-      transform: { xPct: 0.5, yPct: 0.5, wPct: 0.5, rotationDeg: -30 }
-    },
-    image: {
-      enabled: false,
-      opacity: 0.3,
-      grayscale: false,
-      pattern: 'single',
-      transform: { xPct: 0.5, yPct: 0.5, wPct: 0.35, rotationDeg: 0 }
-    }
-  };
-}
+export {
+  defaultWatermark,
+  normalizeWatermark,
+  pageOrientation,
+  getTextPlacement,
+  getImagePlacement
+} from './watermarkModel.js';
+
