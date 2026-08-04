@@ -1,6 +1,16 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { StandardFonts } from 'pdf-lib';
+import fontkit from '@pdf-lib/fontkit';
+
+const fontkitRegistered = new WeakSet();
+
+function ensureFontkit(pdf) {
+  if (!fontkitRegistered.has(pdf)) {
+    pdf.registerFontkit(fontkit);
+    fontkitRegistered.add(pdf);
+  }
+}
 
 /**
  * Resolve a TTF path for family + style from common Linux font dirs
@@ -127,10 +137,30 @@ async function findTtf(fileNames) {
   return null;
 }
 
+/** WinAnsi (StandardFonts) cannot encode Cyrillic / most Unicode. */
+export function needsUnicodeFont(text = '') {
+  for (const ch of String(text)) {
+    const code = ch.codePointAt(0);
+    if (code > 255) return true;
+  }
+  return false;
+}
+
+async function embedTtfFamily(pdf, family, key) {
+  const ttfSpec = TTF_MAP[family];
+  if (!ttfSpec) return null;
+  const file = await findTtf(ttfSpec[key] || ttfSpec.regular);
+  if (!file) return null;
+  ensureFontkit(pdf);
+  const bytes = await fs.readFile(file);
+  return pdf.embedFont(bytes);
+}
+
 /**
  * Embed font for watermark text. Prefer TTF for DejaVu/Liberation; else StandardFonts.
+ * Falls back to DejaVu Sans when text needs Unicode (e.g. Cyrillic).
  */
-export async function resolveWatermarkFont(pdf, { fontFamily, bold, italic }) {
+export async function resolveWatermarkFont(pdf, { fontFamily, bold, italic, text = '' }) {
   let family = fontFamily || 'Helvetica';
   let isBold = !!bold;
   let isItalic = !!italic;
@@ -142,15 +172,28 @@ export async function resolveWatermarkFont(pdf, { fontFamily, bold, italic }) {
   }
 
   const key = styleKey(isBold, isItalic);
-  const ttfSpec = TTF_MAP[family];
-  if (ttfSpec) {
-    const file = await findTtf(ttfSpec[key] || ttfSpec.regular);
-    if (file) {
-      const bytes = await fs.readFile(file);
-      return pdf.embedFont(bytes);
-    }
+  const unicode = needsUnicodeFont(text);
+
+  if (unicode && !TTF_MAP[family]) {
+    family = 'DejaVu Sans';
+  }
+
+  const embedded = await embedTtfFamily(pdf, family, key);
+  if (embedded) return embedded;
+
+  if (unicode) {
+    const fallback = await embedTtfFamily(pdf, 'DejaVu Sans', key);
+    if (fallback) return fallback;
   }
 
   const std = STANDARD[family] || STANDARD.Helvetica;
   return pdf.embedFont(std[key] || std.regular);
+}
+
+/** Embed a Unicode-capable TTF for document text conversion (txt/md/…). */
+export async function resolveDocumentFont(pdf, { bold = false, italic = false } = {}) {
+  const key = styleKey(bold, italic);
+  const embedded = await embedTtfFamily(pdf, 'DejaVu Sans', key);
+  if (embedded) return embedded;
+  return pdf.embedFont(StandardFonts.Helvetica);
 }

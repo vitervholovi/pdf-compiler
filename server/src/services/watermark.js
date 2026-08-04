@@ -48,7 +48,8 @@ export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
     font = await resolveWatermarkFont(pdf, {
       fontFamily: textLayer.fontFamily,
       bold: textLayer.bold,
-      italic: textLayer.italic
+      italic: textLayer.italic,
+      text: textLayer.value
     });
   }
 
@@ -76,7 +77,8 @@ export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
         primaryX,
         primaryY,
         boxW: w,
-        boxH: h
+        boxH: h,
+        rotationDeg: rotation
       });
 
       for (const pos of positions) {
@@ -116,7 +118,8 @@ export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
         primaryX,
         primaryY,
         boxW: textW,
-        boxH: textH
+        boxH: textH,
+        rotationDeg: rotation
       });
 
       for (const pos of positions) {

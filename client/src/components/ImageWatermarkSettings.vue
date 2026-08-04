@@ -82,34 +82,3 @@ function onImage(e) {
   emit('update:watermarkImageFile', file);
 }
 </script>
-
-<style scoped lang="scss">
-.settings {
-  padding: 10px 12px;
-  overflow: auto;
-  min-height: 0;
-  background: var(--surface);
-  display: flex;
-  flex-direction: column;
-}
-
-h2 {
-  margin: 0 0 8px;
-  font-size: 0.95rem;
-}
-
-.field {
-  margin-bottom: 8px;
-}
-
-.toggle-row {
-  margin-bottom: 8px;
-}
-
-.image-name {
-  font-size: 0.75rem;
-  color: var(--muted);
-  margin-bottom: 8px;
-  word-break: break-all;
-}
-</style>

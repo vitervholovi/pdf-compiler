@@ -3,8 +3,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import { pathToFileURL } from 'url';
 import sharp from 'sharp';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 import { extOf, fileCategory, IMAGE_EXT, DJVU_EXT, TEXT_EXT, OFFICE_EXT } from '../utils/mime.js';
+import { resolveDocumentFont } from '../utils/fonts.js';
 
 /** Serialize LibreOffice — concurrent soffice without unique profiles fails silently. */
 let libreOfficeChain = Promise.resolve();
@@ -14,6 +15,12 @@ function enqueueLibreOffice(task) {
   libreOfficeChain = next.catch(() => {});
   return next;
 }
+
+const CALC_EXT = new Set(['xls', 'xlsx', 'ods', 'csv']);
+
+/** LibreOffice filter: each Calc sheet on exactly one PDF page. */
+const CALC_PDF_FILTER =
+  'pdf:calc_pdf_Export:{"SinglePageSheets":{"type":"boolean","value":"true"}}';
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -50,6 +57,9 @@ async function convertWithLibreOffice(inputPath, outDir, { quick = false } = {})
     const profileDir = path.join(outDir, `lo-profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
     await fs.mkdir(profileDir, { recursive: true });
     const profileUri = pathToFileURL(profileDir).href;
+    const convertTo = CALC_EXT.has(ext.replace(/^\./, '').toLowerCase())
+      ? CALC_PDF_FILTER
+      : 'pdf';
 
     try {
       await run('soffice', [
@@ -59,7 +69,7 @@ async function convertWithLibreOffice(inputPath, outDir, { quick = false } = {})
         '--nofirststartwizard',
         '--norestore',
         '--convert-to',
-        'pdf',
+        convertTo,
         '--outdir',
         outDir,
         workInput
@@ -104,7 +114,7 @@ async function convertTextToPdf(inputPath, outPath, { quick = false } = {}) {
     raw = `${raw.slice(0, 20000)}\n…`;
   }
   const pdf = await PDFDocument.create();
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  const font = await resolveDocumentFont(pdf);
   const margin = 48;
   const fontSize = quick ? 10 : 11;
   const lineHeight = quick ? 12 : 14;

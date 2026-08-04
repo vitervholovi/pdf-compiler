@@ -5,19 +5,9 @@
         <h1>PDF Compiler</h1>
         <p class="subtitle">Документи, watermark і конвертація в PDF</p>
       </div>
-      <div class="actions">
-        <button
-          type="button"
-          class="btn btn-primary"
-          :disabled="!files.length || busy"
-          @click="startJob"
-        >
-          {{ busy ? 'Обробка…' : 'Перетворити' }}
-        </button>
-        <span v-if="convertingCount" class="wait-hint">
-          Preview: {{ convertingCount }}…
-        </span>
-      </div>
+      <span v-if="convertingCount" class="wait-hint">
+        Preview: {{ convertingCount }}…
+      </span>
     </header>
 
     <FileUploadZone
@@ -42,12 +32,24 @@
       />
     </div>
 
-    <JobProgress class="progress-slot" :events="events" :download-url="downloadUrl" />
+    <div class="bottom-bar" ref="bottomBar">
+      <div class="convert-row">
+        <button
+          type="button"
+          class="btn btn-primary"
+          :disabled="!files.length || busy"
+          @click="startJob"
+        >
+          {{ busy ? 'Обробка…' : 'Перетворити' }}
+        </button>
+      </div>
+      <JobProgress class="progress-slot" :events="events" :download-url="downloadUrl" />
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import FileUploadZone from './components/FileUploadZone.vue';
 import TextWatermarkSettings from './components/TextWatermarkSettings.vue';
 import ImageWatermarkSettings from './components/ImageWatermarkSettings.vue';
@@ -59,6 +61,12 @@ import {
   isImageFile,
   needsServerPreview
 } from './utils/files.js';
+import {
+  cacheServerPreview,
+  cacheLocalPdf,
+  cacheLocalImage,
+  releasePreviewCache
+} from './utils/previewCache.js';
 
 const files = ref([]);
 const selectedId = ref(null);
@@ -67,6 +75,7 @@ const watermarkImageFile = ref(null);
 const events = ref([]);
 const downloadUrl = ref(null);
 const busy = ref(false);
+const bottomBar = ref(null);
 let es = null;
 
 const selectedFile = computed(() => files.value.find((f) => f.id === selectedId.value) || null);
@@ -95,6 +104,8 @@ async function requestQuickPreview(entry) {
     entry.previewUrl = data.url;
     entry.previewKind = 'server-pdf';
     entry.previewStatus = 'ready';
+    // Cache PDF bytes immediately — survives file switching and post-job server cleanup
+    await cacheServerPreview(entry.id, data.url);
   } catch (e) {
     entry.previewStatus = 'error';
     entry.previewError = e.message || String(e);
@@ -123,9 +134,12 @@ function makeEntry(file) {
   if (isPdfFile(file.name)) {
     entry.previewKind = 'local-pdf';
     entry.previewStatus = 'ready';
+    // Warm cache in background
+    cacheLocalPdf(entry.id, file).catch(() => {});
   } else if (isImageFile(file.name)) {
     entry.previewKind = 'local-image';
     entry.previewStatus = 'ready';
+    cacheLocalImage(entry.id, file);
   } else if (needsServerPreview(file.name)) {
     entry.previewKind = 'blank';
     entry.previewStatus = 'converting';
@@ -150,12 +164,21 @@ function onAdd(list) {
 
 async function onRemove(i) {
   const removed = files.value.splice(i, 1)[0];
-  if (removed?.previewId) {
-    fetch(`/api/preview/${removed.previewId}`, { method: 'DELETE' }).catch(() => {});
+  if (removed) {
+    releasePreviewCache(removed.id);
+    if (removed.previewId) {
+      fetch(`/api/preview/${removed.previewId}`, { method: 'DELETE' }).catch(() => {});
+    }
   }
   if (removed && removed.id === selectedId.value) {
     selectedId.value = files.value[0]?.id || null;
   }
+}
+
+function scrollToProgress() {
+  nextTick(() => {
+    bottomBar.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
 }
 
 async function startJob() {
@@ -167,6 +190,7 @@ async function startJob() {
     es.close();
     es = null;
   }
+  scrollToProgress();
 
   const fd = new FormData();
   const previewIds = [];
@@ -197,14 +221,14 @@ async function startJob() {
         return;
       }
       events.value.push(data);
+      scrollToProgress();
       if (data.downloadUrl) downloadUrl.value = data.downloadUrl;
       if (data.type === 'completed') {
+        // Server may delete temp preview files — keep client cache & UI state
         for (const f of files.value) {
-          if (f.previewKind === 'server-pdf') {
-            f.previewUrl = null;
+          if (f.previewId) {
             f.previewId = null;
-            f.previewStatus = 'done';
-            f.previewKind = 'blank';
+            f.previewUrl = null;
           }
         }
         busy.value = false;
@@ -222,95 +246,3 @@ async function startJob() {
   }
 }
 </script>
-
-<style scoped lang="scss">
-.app-shell {
-  width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 16px 16px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 100vh;
-  box-sizing: border-box;
-}
-
-.top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.titles {
-  min-width: 0;
-
-  h1 {
-    margin: 0;
-    font-size: 1.35rem;
-  }
-
-  .subtitle {
-    margin: 2px 0 0;
-    font-size: 0.85rem;
-  }
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-
-.wait-hint {
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-.upload {
-  flex-shrink: 0;
-}
-
-.workspace {
-  display: grid;
-  grid-template-columns: minmax(200px, 240px) minmax(180px, 220px) minmax(0, 1fr);
-  gap: 10px;
-  align-items: stretch;
-  min-height: 520px;
-
-  > :deep(.settings) {
-    min-height: 480px;
-    max-height: 70vh;
-    overflow: auto;
-  }
-
-  > :deep(.preview) {
-    min-width: 0;
-    min-height: 480px;
-    max-height: 70vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-}
-
-.progress-slot {
-  width: 100%;
-  max-width: 1280px;
-}
-
-@media (max-width: 960px) {
-  .workspace {
-    grid-template-columns: 1fr;
-    min-height: 0;
-
-    > :deep(.settings),
-    > :deep(.preview) {
-      max-height: none;
-      min-height: 280px;
-    }
-  }
-}
-</style>

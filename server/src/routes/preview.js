@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import { decodeUploadFilename, safeFilename } from '../utils/filenames.js';
 
 export function previewRouter({ previewsDir, previewStore }) {
   const router = Router();
@@ -14,8 +15,7 @@ export function previewRouter({ previewsDir, previewStore }) {
       cb(null, dir);
     },
     filename(_req, file, cb) {
-      const safe = file.originalname.replace(/[^\w.\-() \u0400-\u04FF]+/g, '_');
-      cb(null, safe);
+      cb(null, safeFilename(file.originalname));
     }
   });
 
@@ -29,12 +29,13 @@ export function previewRouter({ previewsDir, previewStore }) {
       if (!req.file) {
         return res.status(400).json({ error: 'Файл обовʼязковий' });
       }
-      console.log(`[preview] start ${req.file.originalname} (${req.file.size} bytes)`);
+      const originalName = decodeUploadFilename(req.file.originalname);
+      console.log(`[preview] start ${originalName} (${req.file.size} bytes)`);
       const result = await previewStore.createQuickPreview(
         req.file.path,
-        req.file.originalname
+        originalName
       );
-      console.log(`[preview] done ${req.file.originalname} -> ${result.previewId}`);
+      console.log(`[preview] done ${originalName} -> ${result.previewId}`);
       // cleanup incoming upload
       fs.rmSync(path.dirname(req.file.path), { recursive: true, force: true });
       res.status(201).json(result);

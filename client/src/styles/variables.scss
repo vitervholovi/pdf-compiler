@@ -1,0 +1,138 @@
+// Design tokens — colors, spacing, sizes, typography, z-index, breakpoints
+
+:root {
+  /* Colors */
+  --color-bg: #f6f6f4;
+  --color-bg-mid: #f0f2ef;
+  --color-bg-deep: #eceee9;
+  --color-surface: #ffffff;
+  --color-surface-muted: #fafafa;
+  --color-surface-accent: #f0f7f3;
+  --color-surface-accent-soft: #e8f2ed;
+  --color-border: #d4d4d0;
+  --color-border-soft: #cfcfc9;
+  --color-border-faint: #eee;
+  --color-text: #1a1a1a;
+  --color-muted: #666666;
+  --color-muted-soft: #888888;
+  --color-accent: #2c5f4a;
+  --color-accent-hover: #234c3c;
+  --color-accent-wash: rgba(44, 95, 74, 0.04);
+  --color-accent-dash: rgba(44, 95, 74, 0.55);
+  --color-danger: #aa3333;
+  --color-warning: #b78100;
+  --color-stage-wrap: #e8e8e4;
+  --color-page-rule: #f3f3f0;
+  --color-progress-track: #e5e5e0;
+  --color-shadow: rgba(0, 0, 0, 0.14);
+  --color-shadow-soft: rgba(0, 0, 0, 0.2);
+  --color-shadow-handle: rgba(0, 0, 0, 0.25);
+
+  /* Legacy aliases (used across the app) */
+  --bg: var(--color-bg);
+  --surface: var(--color-surface);
+  --border: var(--color-border);
+  --text: var(--color-text);
+  --muted: var(--color-muted);
+  --accent: var(--color-accent);
+  --accent-hover: var(--color-accent-hover);
+  --danger: var(--color-danger);
+
+  /* Spacing scale */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 14px;
+  --space-8: 16px;
+  --space-9: 24px;
+  --space-10: 28px;
+
+  /* Radii */
+  --radius: 4px;
+  --radius-full: 50%;
+
+  /* Typography */
+  --font-family: "Segoe UI", "PT Root UI", system-ui, sans-serif;
+  --font-xs: 0.58rem;
+  --font-2xs: 0.6rem;
+  --font-sm: 0.65rem;
+  --font-hint: 0.72rem;
+  --font-caption: 0.75rem;
+  --font-small: 0.8rem;
+  --font-body-sm: 0.82rem;
+  --font-body: 0.85rem;
+  --font-title-sm: 0.9rem;
+  --font-title: 0.95rem;
+  --font-h1: 1.35rem;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 650;
+  --letter-tight: -0.02em;
+  --letter-wide: 0.04em;
+  --line-tight: 1.15;
+  --line-snug: 1.25;
+
+  /* Layout */
+  --layout-max-width: 1280px;
+  --layout-gap: var(--space-5);
+  --layout-pad-x: var(--space-8);
+  --layout-pad-y: var(--space-8);
+  --layout-pad-bottom: var(--space-9);
+  --workspace-min-height: 520px;
+  --panel-min-height: 480px;
+  --panel-max-height: 70vh;
+  --panel-min-height-mobile: 280px;
+  --settings-col-min: 200px;
+  --settings-col-max: 240px;
+  --image-col-min: 180px;
+  --image-col-max: 220px;
+  --breakpoint-mobile: 960px;
+
+  /* Controls */
+  --btn-pad-y: 7px;
+  --btn-pad-x: var(--space-6);
+  --input-pad-y: 5px;
+  --input-pad-x: 7px;
+  --field-gap: 3px;
+  --style-btn-width: 32px;
+  --style-btn-height: 28px;
+
+  /* Upload */
+  --upload-min-height: 52px;
+  --upload-max-height: 140px;
+  --thumb-width: 92px;
+  --thumb-icon-height: 28px;
+
+  /* Preview / stage */
+  --stage-wrap-min-height: 360px;
+  --stage-min-width: 200px;
+  --stage-min-height: 280px;
+  --stage-rule-size: 24px;
+  --handle-size: 12px;
+  --handle-offset: -6px;
+  --rotate-handle-top: -28px;
+  --rotate-stem-height: 14px;
+  --toolbar-pad-y: var(--space-3);
+  --toolbar-pad-x: var(--space-5);
+
+  /* Progress */
+  --progress-bar-height: 6px;
+  --progress-log-max-height: 120px;
+  --progress-label-min-width: 90px;
+
+  /* Motion */
+  --transition-fast: 0.15s;
+  --transition-bar: 0.2s;
+
+  /* Z-index */
+  --z-page: 0;
+  --z-canvas: 1;
+  --z-wm-ghost: 1;
+  --z-wm: 2;
+  --z-wm-placeholder: 3;
+  --z-wm-primary: 5;
+  --z-handle: 6;
+  --z-rotate: 7;
+}

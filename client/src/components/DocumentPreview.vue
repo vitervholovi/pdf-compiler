@@ -62,6 +62,11 @@
             :data-handle="h"
             @pointerdown.stop="onResizeDown($event, 'text', h)"
           />
+          <span
+            class="rotate-handle"
+            title="Обертати"
+            @pointerdown.stop="onRotateDown($event, 'text')"
+          />
         </div>
 
         <div
@@ -79,6 +84,11 @@
             :data-handle="h"
             @pointerdown.stop="onResizeDown($event, 'image', h)"
           />
+          <span
+            class="rotate-handle"
+            title="Обертати"
+            @pointerdown.stop="onRotateDown($event, 'image')"
+          />
         </div>
         <div v-else-if="wm.image.enabled && !imagePreviewUrl" class="wm-placeholder">
           Оберіть зображення watermark зліва
@@ -94,6 +104,14 @@ import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { tileGhostsFromPrimary } from '../utils/tiling.js';
 import { fontCssFamily } from '../utils/fonts.js';
+import {
+  hasCachedPdf,
+  takePdfCopy,
+  cacheLocalPdf,
+  cacheLocalImage,
+  cacheServerPreview,
+  getCachedImageUrl
+} from '../utils/previewCache.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -128,6 +146,7 @@ const wm = reactive(clonePlain(props.watermark));
 const statusHint = computed(() => {
   const f = props.file;
   if (!f) return 'Порожня сторінка A4 — можна одразу налаштувати watermark';
+  if (hasCachedPdf(f.id) || getCachedImageUrl(f.id)) return '';
   if (f.previewStatus === 'converting' || f.previewStatus === 'pending') {
     return 'Швидкий preview ще генерується — watermark уже можна приміряти на порожній сторінці';
   }
@@ -143,6 +162,8 @@ const statusHint = computed(() => {
 let pdfDoc = null;
 let drag = null;
 let syncingFromParent = false;
+let renderTask = null;
+let renderGen = 0;
 
 watch(
   () => props.watermark,
@@ -218,7 +239,8 @@ const textGhosts = computed(() => {
     primaryLeft: p.left,
     primaryTop: p.top,
     boxW: p.w,
-    boxH: p.h
+    boxH: p.h,
+    rotationDeg: wm.text.transform.rotationDeg || 0
   });
 });
 
@@ -231,7 +253,8 @@ const imageGhosts = computed(() => {
     primaryLeft: p.left,
     primaryTop: p.top,
     boxW: p.w,
-    boxH: p.h
+    boxH: p.h,
+    rotationDeg: wm.image.transform.rotationDeg || 0
   });
 });
 
@@ -280,10 +303,7 @@ function fitScale(w, h) {
 function resetBlank() {
   hasPdf.value = false;
   hasImage.value = false;
-  if (docImageUrl.value) {
-    URL.revokeObjectURL(docImageUrl.value);
-    docImageUrl.value = null;
-  }
+  docImageUrl.value = null;
   pageCount.value = 0;
   page.value = 1;
   pageSize.value = { w: 595.28, h: 841.89 };
@@ -298,7 +318,8 @@ function onDocImageLoad(e) {
 }
 
 async function loadPdfFromBuffer(data) {
-  pdfDoc = await pdfjs.getDocument({ data }).promise;
+  const loadingTask = pdfjs.getDocument({ data });
+  pdfDoc = await loadingTask.promise;
   pageCount.value = pdfDoc.numPages;
   page.value = 1;
   hasPdf.value = true;
@@ -308,75 +329,138 @@ async function loadPdfFromBuffer(data) {
 }
 
 async function loadPreview() {
-  cleanupPdf();
-  if (docImageUrl.value) {
-    URL.revokeObjectURL(docImageUrl.value);
-    docImageUrl.value = null;
-  }
+  const gen = ++renderGen;
+  await cleanupPdf();
+  docImageUrl.value = null;
   hasImage.value = false;
   hasPdf.value = false;
 
   const f = props.file;
   if (!f) {
-    resetBlank();
+    if (gen === renderGen) resetBlank();
     return;
   }
 
-  // Local PDF — never sent to server preview
-  if (f.previewKind === 'local-pdf' && f.file) {
+  // 1) Client PDF cache (server preview or local PDF)
+  if (hasCachedPdf(f.id)) {
     try {
-      const data = await f.file.arrayBuffer();
+      const data = takePdfCopy(f.id);
+      if (gen !== renderGen) return;
       await loadPdfFromBuffer(data);
     } catch (err) {
       console.error(err);
-      resetBlank();
+      if (gen === renderGen) resetBlank();
     }
     return;
   }
 
-  // Local image
+  // 2) Cached / local image
   if (f.previewKind === 'local-image' && f.file) {
-    docImageUrl.value = URL.createObjectURL(f.file);
+    if (gen !== renderGen) return;
+    docImageUrl.value = cacheLocalImage(f.id, f.file);
+    hasImage.value = true;
+    pageCount.value = 1;
+    page.value = 1;
+    return;
+  }
+  const cachedImg = getCachedImageUrl(f.id);
+  if (cachedImg) {
+    if (gen !== renderGen) return;
+    docImageUrl.value = cachedImg;
     hasImage.value = true;
     pageCount.value = 1;
     page.value = 1;
     return;
   }
 
-  // Server quick PDF ready
-  if (f.previewUrl && f.previewStatus === 'ready') {
+  // 3) Local PDF — read once into cache
+  if (f.previewKind === 'local-pdf' && f.file) {
     try {
-      const res = await fetch(f.previewUrl);
-      if (!res.ok) throw new Error('preview fetch failed');
-      const data = await res.arrayBuffer();
-      await loadPdfFromBuffer(data);
+      await cacheLocalPdf(f.id, f.file);
+      if (gen !== renderGen) return;
+      await loadPdfFromBuffer(takePdfCopy(f.id));
     } catch (err) {
       console.error(err);
-      resetBlank();
+      if (gen === renderGen) resetBlank();
+    }
+    return;
+  }
+
+  // 4) Server quick PDF ready — fetch + cache
+  if (f.previewUrl && f.previewStatus === 'ready') {
+    try {
+      await cacheServerPreview(f.id, f.previewUrl);
+      if (gen !== renderGen) return;
+      await loadPdfFromBuffer(takePdfCopy(f.id));
+    } catch (err) {
+      console.error(err);
+      if (gen === renderGen) resetBlank();
     }
     return;
   }
 
   // Converting / unsupported / error — blank page, watermark still interactive
-  resetBlank();
+  if (gen === renderGen) resetBlank();
+}
+
+async function cancelRender() {
+  if (renderTask) {
+    try {
+      renderTask.cancel();
+    } catch {
+      // ignore
+    }
+    try {
+      await renderTask.promise;
+    } catch {
+      // cancelled
+    }
+    renderTask = null;
+  }
 }
 
 async function renderPage() {
   if (!pdfDoc || !canvas.value) return;
+  const gen = renderGen;
+  await cancelRender();
+  if (gen !== renderGen || !pdfDoc || !canvas.value) return;
+
   const pdfPage = await pdfDoc.getPage(page.value);
-  const unscaled = pdfPage.getViewport({ scale: 1 });
+  // Use page's inherent rotation only — do not add extra rotation (avoids upside-down first page).
+  const rotation = pdfPage.rotate || 0;
+  const unscaled = pdfPage.getViewport({ scale: 1, rotation });
   pageSize.value = { w: unscaled.width, h: unscaled.height };
   await nextTick();
+  if (gen !== renderGen) return;
   fitScale(unscaled.width, unscaled.height);
-  const viewport = pdfPage.getViewport({ scale: displayScale.value });
+
+  const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+  const viewport = pdfPage.getViewport({
+    scale: displayScale.value * outputScale,
+    rotation
+  });
   const c = canvas.value;
-  c.width = viewport.width;
-  c.height = viewport.height;
+  c.width = Math.floor(viewport.width);
+  c.height = Math.floor(viewport.height);
+  c.style.width = '';
+  c.style.height = '';
+
   const ctx = c.getContext('2d');
-  await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, c.width, c.height);
+
+  renderTask = pdfPage.render({ canvasContext: ctx, viewport });
+  try {
+    await renderTask.promise;
+  } catch (err) {
+    if (err?.name !== 'RenderingCancelledException') throw err;
+  } finally {
+    renderTask = null;
+  }
 }
 
-function cleanupPdf() {
+async function cleanupPdf() {
+  await cancelRender();
   if (pdfDoc) {
     pdfDoc.destroy();
     pdfDoc = null;
@@ -394,12 +478,16 @@ watch(page, () => {
 });
 
 let resizeObs = null;
+let resizeTimer = null;
 onMounted(() => {
-  resetBlank();
+  // Do not resetBlank here — immediate watch already loads the selected file.
   if (wrap.value && typeof ResizeObserver !== 'undefined') {
     resizeObs = new ResizeObserver(() => {
-      fitScale(pageSize.value.w, pageSize.value.h);
-      if (pdfDoc) renderPage();
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        fitScale(pageSize.value.w, pageSize.value.h);
+        if (pdfDoc) renderPage();
+      }, 80);
     });
     resizeObs.observe(wrap.value);
   }
@@ -454,6 +542,29 @@ function onResizeDown(e, kind, handle) {
   window.addEventListener('pointerup', onUp);
 }
 
+function onRotateDown(e, kind) {
+  e.preventDefault();
+  e.stopPropagation();
+  active.value = kind;
+  const stageEl = e.currentTarget.closest('.stage');
+  const rect = stageEl?.getBoundingClientRect();
+  const primary = kind === 'text' ? textPrimary.value : imagePrimary.value;
+  const cx = (rect?.left || 0) + primary.left + primary.w / 2;
+  const cy = (rect?.top || 0) + primary.top + primary.h / 2;
+  const pointerAngle = (Math.atan2(e.clientY - cy, e.clientX - cx) * 180) / Math.PI;
+  drag = {
+    mode: 'rotate',
+    kind,
+    cx,
+    cy,
+    startAngle: pointerAngle,
+    origRot: Number(wm[kind].transform.rotationDeg) || 0
+  };
+  e.currentTarget.setPointerCapture?.(e.pointerId);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+}
+
 function onMove(e) {
   if (!drag) return;
   const dx = e.clientX - drag.startX;
@@ -464,6 +575,15 @@ function onMove(e) {
   if (drag.mode === 'move') {
     wm[drag.kind].transform.xPct = clamp(drag.origX + dx / sw, 0.02, 0.98);
     wm[drag.kind].transform.yPct = clamp(drag.origY + dy / sh, 0.02, 0.98);
+    return;
+  }
+
+  if (drag.mode === 'rotate') {
+    const angle = (Math.atan2(e.clientY - drag.cy, e.clientX - drag.cx) * 180) / Math.PI;
+    let next = drag.origRot + (angle - drag.startAngle);
+    // normalize to [-180, 180]
+    next = ((next + 180) % 360 + 360) % 360 - 180;
+    wm[drag.kind].transform.rotationDeg = Math.round(next);
     return;
   }
 
@@ -499,179 +619,12 @@ function clamp(n, a, b) {
 }
 
 onBeforeUnmount(() => {
+  clearTimeout(resizeTimer);
   cleanupPdf();
   resizeObs?.disconnect();
   if (imagePreviewUrl.value) URL.revokeObjectURL(imagePreviewUrl.value);
-  if (docImageUrl.value) URL.revokeObjectURL(docImageUrl.value);
+  // docImageUrl is owned by previewCache — do not revoke here
   window.removeEventListener('pointermove', onMove);
   window.removeEventListener('pointerup', onUp);
 });
 </script>
-
-<style scoped lang="scss">
-.preview {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  background: var(--surface);
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.title {
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.pager {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.85rem;
-}
-
-.hint {
-  margin: 0 0 6px;
-  font-size: 0.75rem;
-  color: var(--muted);
-  text-align: center;
-  width: 100%;
-  flex-shrink: 0;
-}
-
-.stage-wrap {
-  flex: 1;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 12px;
-  background: #e8e8e4;
-  min-height: 360px;
-}
-
-.stage {
-  position: relative;
-  background: #fff;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
-  border: 1px solid #cfcfc9;
-  overflow: hidden;
-  flex-shrink: 0;
-  min-width: 200px;
-  min-height: 280px;
-}
-
-.page-frame {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    linear-gradient(#f3f3f0 1px, transparent 1px) 0 0 / 100% 24px,
-    #fff;
-  opacity: 0.35;
-}
-
-.page-label {
-  position: absolute;
-  top: 10px;
-  right: 12px;
-  font-size: 0.75rem;
-  color: #888;
-  letter-spacing: 0.04em;
-}
-
-.blank-page {
-  position: absolute;
-  inset: 0;
-  background: transparent;
-  z-index: 0;
-}
-
-.page-canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  user-select: none;
-}
-
-.page-image {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  pointer-events: none;
-  user-select: none;
-}
-
-.wm {
-  position: absolute;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  touch-action: none;
-  user-select: none;
-
-  &.ghost {
-    z-index: 1;
-    pointer-events: none;
-  }
-
-  &.primary {
-    z-index: 5;
-    cursor: move;
-    border: 1px dashed rgba(44, 95, 74, 0.55);
-    background: rgba(44, 95, 74, 0.04);
-  }
-
-  &.active {
-    border-color: var(--accent);
-    outline: 1px solid var(--accent);
-  }
-}
-
-.wm-visual {
-  pointer-events: none;
-  white-space: nowrap;
-  line-height: 1;
-  max-width: 100%;
-  max-height: 100%;
-}
-
-.wm-placeholder {
-  position: absolute;
-  inset: 40% 10%;
-  z-index: 3;
-  text-align: center;
-  color: var(--muted);
-  font-size: 0.85rem;
-  pointer-events: none;
-}
-
-.handle {
-  position: absolute;
-  width: 12px;
-  height: 12px;
-  background: var(--accent);
-  border: 2px solid #fff;
-  z-index: 6;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
-
-  &[data-handle='nw'] { left: -6px; top: -6px; cursor: nwse-resize; }
-  &[data-handle='ne'] { right: -6px; top: -6px; cursor: nesw-resize; }
-  &[data-handle='sw'] { left: -6px; bottom: -6px; cursor: nesw-resize; }
-  &[data-handle='se'] { right: -6px; bottom: -6px; cursor: nwse-resize; }
-}
-</style>

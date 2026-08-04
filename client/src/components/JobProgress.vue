@@ -5,7 +5,7 @@
       <span v-if="percent != null">{{ percent }}%</span>
     </div>
     <div class="bar"><div class="fill" :style="{ width: `${percent || 0}%` }" /></div>
-    <ul class="log">
+    <ul class="log" ref="logEl">
       <li v-for="(e, i) in events" :key="i" :class="e.type">
         <span class="t">{{ label(e) }}</span>
         <span v-if="e.currentFile" class="f">{{ e.currentFile }}</span>
@@ -17,12 +17,14 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 
 const props = defineProps({
   events: { type: Array, default: () => [] },
   downloadUrl: { type: String, default: null }
 });
+
+const logEl = ref(null);
 
 const visible = computed(() => props.events.length > 0 || props.downloadUrl);
 const percent = computed(() => {
@@ -31,6 +33,15 @@ const percent = computed(() => {
   }
   return 0;
 });
+
+watch(
+  () => props.events.length,
+  async () => {
+    await nextTick();
+    const el = logEl.value;
+    if (el) el.scrollTop = el.scrollHeight;
+  }
+);
 
 function label(e) {
   const map = {
@@ -49,57 +60,3 @@ function label(e) {
   return map[e.type] || e.type;
 }
 </script>
-
-<style scoped lang="scss">
-.progress {
-  margin-top: 0;
-  padding: 8px 10px;
-}
-
-.head {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 6px;
-  font-size: 0.85rem;
-}
-
-.bar {
-  height: 6px;
-  background: #e5e5e0;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 6px;
-}
-
-.fill {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.2s;
-}
-
-.log {
-  list-style: none;
-  margin: 0 0 6px;
-  padding: 0;
-  max-height: 56px;
-  overflow: auto;
-  font-size: 0.75rem;
-
-  li {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 2px 0;
-    border-bottom: 1px solid #eee;
-  }
-
-  .t { font-weight: 600; min-width: 90px; }
-  .f { color: var(--muted); }
-  .m { color: var(--text); }
-
-  .file_error .t,
-  .failed .t,
-  .warning .t { color: var(--danger); }
-  .completed .t { color: var(--accent); }
-}
-</style>

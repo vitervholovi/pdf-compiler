@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { createJob, getJob } from '../services/jobs.js';
+import { decodeUploadFilename, safeFilename } from '../utils/filenames.js';
 
 export function jobsRouter({ uploadsDir, resultsDir, previewStore }) {
   const router = Router();
@@ -16,8 +17,7 @@ export function jobsRouter({ uploadsDir, resultsDir, previewStore }) {
       cb(null, dir);
     },
     filename(_req, file, cb) {
-      const safe = file.originalname.replace(/[^\w.\-() \u0400-\u04FF]+/g, '_');
-      cb(null, `${Date.now()}-${safe}`);
+      cb(null, `${Date.now()}-${safeFilename(file.originalname)}`);
     }
   });
 
@@ -38,7 +38,7 @@ export function jobsRouter({ uploadsDir, resultsDir, previewStore }) {
           return res.status(400).json({ error: 'Немає файлів' });
         }
         const files = (req.files?.files || []).map((f) => ({
-          originalName: f.originalname,
+          originalName: decodeUploadFilename(f.originalname),
           storedName: f.filename,
           size: f.size
         }));
