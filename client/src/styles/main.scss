@@ -20,12 +20,13 @@
 html,
 body,
 #app {
-  height: 100%;
   margin: 0;
-  overflow: hidden;
+  min-height: 100%;
 }
 
 body {
+  overflow-x: hidden;
+  overflow-y: auto;
   background:
     linear-gradient(180deg, #f0f2ef 0%, #f6f6f4 40%, #eceee9 100%);
 }

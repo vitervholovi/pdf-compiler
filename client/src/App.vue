@@ -225,15 +225,15 @@ async function startJob() {
 
 <style scoped lang="scss">
 .app-shell {
-  height: 100vh;
-  max-height: 100vh;
-  max-width: none;
-  margin: 0;
-  padding: 10px 12px;
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  gap: 8px;
-  overflow: hidden;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 16px 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .top {
@@ -241,7 +241,6 @@ async function startJob() {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 0;
 }
 
 .titles {
@@ -249,12 +248,12 @@ async function startJob() {
 
   h1 {
     margin: 0;
-    font-size: 1.15rem;
+    font-size: 1.35rem;
   }
 
   .subtitle {
     margin: 2px 0 0;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
   }
 }
 
@@ -268,33 +267,29 @@ async function startJob() {
 .wait-hint {
   font-size: 0.8rem;
   color: var(--muted);
-  white-space: nowrap;
 }
 
 .upload {
-  min-height: 0;
   flex-shrink: 0;
 }
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(160px, 200px) minmax(320px, 1fr);
-  gap: 8px;
-  min-height: 0;
-  overflow: hidden;
+  grid-template-columns: minmax(200px, 240px) minmax(180px, 220px) minmax(0, 1fr);
+  gap: 10px;
   align-items: stretch;
+  min-height: 520px;
 
   > :deep(.settings) {
-    min-width: 0;
-    min-height: 0;
-    height: 100%;
+    min-height: 480px;
+    max-height: 70vh;
     overflow: auto;
   }
 
   > :deep(.preview) {
-    min-width: 280px;
-    min-height: 0;
-    height: 100%;
+    min-width: 0;
+    min-height: 480px;
+    max-height: 70vh;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -302,18 +297,19 @@ async function startJob() {
 }
 
 .progress-slot {
-  min-height: 0;
-  max-height: 120px;
-  overflow: auto;
+  width: 100%;
+  max-width: 1280px;
 }
 
 @media (max-width: 960px) {
   .workspace {
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1.4fr);
+    grid-template-columns: 1fr;
+    min-height: 0;
 
+    > :deep(.settings),
     > :deep(.preview) {
-      grid-column: 1 / -1;
+      max-height: none;
+      min-height: 280px;
     }
   }
 }

@@ -89,13 +89,17 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onBeforeUnmount, onMounted, nextTick, reactive } from 'vue';
+import { computed, ref, watch, onBeforeUnmount, onMounted, nextTick, reactive, toRaw } from 'vue';
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { tileGhostsFromPrimary } from '../utils/tiling.js';
 import { fontCssFamily } from '../utils/fonts.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
+
+function clonePlain(value) {
+  return JSON.parse(JSON.stringify(toRaw(value)));
+}
 
 const props = defineProps({
   file: { type: Object, default: null },
@@ -119,7 +123,7 @@ const hasImage = ref(false);
 const handles = ['nw', 'ne', 'sw', 'se'];
 const stageReady = ref(false);
 
-const wm = reactive(structuredClone(props.watermark));
+const wm = reactive(clonePlain(props.watermark));
 
 const statusHint = computed(() => {
   const f = props.file;
@@ -145,8 +149,8 @@ watch(
   (v) => {
     if (drag) return;
     syncingFromParent = true;
-    Object.assign(wm.text, structuredClone(v.text));
-    Object.assign(wm.image, structuredClone(v.image));
+    Object.assign(wm.text, clonePlain(v.text));
+    Object.assign(wm.image, clonePlain(v.image));
     syncingFromParent = false;
   },
   { deep: true }
@@ -154,7 +158,7 @@ watch(
 
 function commitWm() {
   if (syncingFromParent) return;
-  emit('update:watermark', structuredClone(wm));
+  emit('update:watermark', clonePlain(wm));
 }
 
 const stageStyle = computed(() => {
@@ -509,8 +513,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  min-width: 280px;
-  height: 100%;
+  min-width: 0;
   background: var(--surface);
 }
 
@@ -551,9 +554,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: 10px;
+  padding: 12px;
   background: #e8e8e4;
-  min-height: 0;
+  min-height: 360px;
 }
 
 .stage {
