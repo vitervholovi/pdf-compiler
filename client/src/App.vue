@@ -1,9 +1,27 @@
 <template>
   <div class="app-shell">
-    <h1>PDF Compiler</h1>
-    <p class="subtitle">Завантаження документів, watermark і конвертація в PDF</p>
+    <header class="top">
+      <div class="titles">
+        <h1>PDF Compiler</h1>
+        <p class="subtitle">Документи, watermark і конвертація в PDF</p>
+      </div>
+      <div class="actions">
+        <button
+          type="button"
+          class="btn btn-primary"
+          :disabled="!files.length || busy"
+          @click="startJob"
+        >
+          {{ busy ? 'Обробка…' : 'Перетворити' }}
+        </button>
+        <span v-if="convertingCount" class="wait-hint">
+          Preview: {{ convertingCount }}…
+        </span>
+      </div>
+    </header>
 
     <FileUploadZone
+      class="upload"
       :files="files"
       :selected-id="selectedId"
       @add="onAdd"
@@ -12,7 +30,8 @@
     />
 
     <div class="workspace">
-      <WatermarkSettings
+      <TextWatermarkSettings v-model="watermark" />
+      <ImageWatermarkSettings
         v-model="watermark"
         v-model:watermark-image-file="watermarkImageFile"
       />
@@ -23,28 +42,15 @@
       />
     </div>
 
-    <div class="actions panel">
-      <button
-        type="button"
-        class="btn btn-primary"
-        :disabled="!files.length || busy"
-        @click="startJob"
-      >
-        {{ busy ? 'Обробка…' : 'Перетворити' }}
-      </button>
-      <span v-if="convertingCount" class="wait-hint">
-        Швидкий preview генерується для {{ convertingCount }} файл(ів) — watermark можна налаштовувати вже зараз
-      </span>
-    </div>
-
-    <JobProgress :events="events" :download-url="downloadUrl" />
+    <JobProgress class="progress-slot" :events="events" :download-url="downloadUrl" />
   </div>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue';
 import FileUploadZone from './components/FileUploadZone.vue';
-import WatermarkSettings from './components/WatermarkSettings.vue';
+import TextWatermarkSettings from './components/TextWatermarkSettings.vue';
+import ImageWatermarkSettings from './components/ImageWatermarkSettings.vue';
 import DocumentPreview from './components/DocumentPreview.vue';
 import JobProgress from './components/JobProgress.vue';
 import {
@@ -206,51 +212,94 @@ async function startJob() {
 </script>
 
 <style scoped lang="scss">
-.workspace {
+.app-shell {
+  height: 100vh;
+  max-height: 100vh;
+  max-width: none;
+  margin: 0;
+  padding: 10px 12px;
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 12px;
-  margin-top: 12px;
-  min-height: 520px;
-  align-items: stretch;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 8px;
+  overflow: hidden;
+}
 
-  > :deep(.settings) {
-    min-height: 520px;
-    max-height: 70vh;
-    overflow: auto;
-    z-index: 2;
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 0;
+}
+
+.titles {
+  min-width: 0;
+
+  h1 {
+    margin: 0;
+    font-size: 1.15rem;
   }
 
-  > :deep(.preview) {
-    min-height: 520px;
-    max-height: 70vh;
-    display: flex;
-    flex-direction: column;
+  .subtitle {
+    margin: 2px 0 0;
+    font-size: 0.8rem;
   }
 }
 
 .actions {
-  margin-top: 12px;
-  padding: 12px 14px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .wait-hint {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: var(--muted);
+  white-space: nowrap;
 }
 
-@media (max-width: 860px) {
-  .workspace {
-    grid-template-columns: 1fr;
+.upload {
+  min-height: 0;
+  flex-shrink: 0;
+}
 
-    > :deep(.settings),
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(200px, 240px) minmax(180px, 220px) minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+  align-items: stretch;
+
+  > :deep(.settings),
+  > :deep(.preview) {
+    min-height: 0;
+    height: 100%;
+    max-height: none;
+    overflow: auto;
+  }
+
+  > :deep(.preview) {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}
+
+.progress-slot {
+  min-height: 0;
+  max-height: 120px;
+  overflow: auto;
+}
+
+@media (max-width: 960px) {
+  .workspace {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1.4fr);
+
     > :deep(.preview) {
-      max-height: none;
-      min-height: 320px;
+      grid-column: 1 / -1;
     }
   }
 }

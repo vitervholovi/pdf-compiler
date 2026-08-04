@@ -52,22 +52,23 @@ function label(e) {
 
 <style scoped lang="scss">
 .progress {
-  margin-top: 16px;
-  padding: 14px;
+  margin-top: 0;
+  padding: 8px 10px;
 }
 
 .head {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
 }
 
 .bar {
-  height: 8px;
+  height: 6px;
   background: #e5e5e0;
   border-radius: 4px;
   overflow: hidden;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 
 .fill {
@@ -78,21 +79,21 @@ function label(e) {
 
 .log {
   list-style: none;
-  margin: 0 0 12px;
+  margin: 0 0 6px;
   padding: 0;
-  max-height: 180px;
+  max-height: 56px;
   overflow: auto;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
 
   li {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 4px 0;
+    gap: 6px;
+    padding: 2px 0;
     border-bottom: 1px solid #eee;
   }
 
-  .t { font-weight: 600; min-width: 110px; }
+  .t { font-weight: 600; min-width: 90px; }
   .f { color: var(--muted); }
   .m { color: var(--text); }
 

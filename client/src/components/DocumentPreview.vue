@@ -158,12 +158,11 @@ function commitWm() {
 }
 
 const stageStyle = computed(() => {
-  const w = Math.max(280, pageSize.value.w * displayScale.value);
-  const h = Math.max(396, pageSize.value.h * displayScale.value);
+  const w = Math.max(200, pageSize.value.w * displayScale.value);
+  const h = Math.max(280, pageSize.value.h * displayScale.value);
   return {
     width: `${w}px`,
-    height: `${h}px`,
-    visibility: stageReady.value ? 'visible' : 'visible'
+    height: `${h}px`
   };
 });
 
@@ -267,10 +266,10 @@ function boxPosStyle(pos) {
 function fitScale(w, h) {
   const wrapW = wrap.value?.clientWidth || 0;
   const wrapH = wrap.value?.clientHeight || 0;
-  const maxW = Math.max(280, (wrapW || 520) - 32);
-  const maxH = Math.max(396, (wrapH || 560) - 48);
-  const raw = Math.min(maxW / w, maxH / h, 1.15);
-  displayScale.value = Math.max(0.4, raw);
+  const maxW = Math.max(200, (wrapW || 480) - 24);
+  const maxH = Math.max(240, (wrapH || 420) - 36);
+  const raw = Math.min(maxW / w, maxH / h, 1.05);
+  displayScale.value = Math.max(0.28, raw);
   stageReady.value = true;
 }
 
@@ -517,13 +516,13 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .title {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 600;
 }
 
@@ -535,11 +534,12 @@ onBeforeUnmount(() => {
 }
 
 .hint {
-  margin: 0 0 8px;
-  font-size: 0.8rem;
+  margin: 0 0 6px;
+  font-size: 0.75rem;
   color: var(--muted);
   text-align: center;
   width: 100%;
+  flex-shrink: 0;
 }
 
 .stage-wrap {
@@ -549,9 +549,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding: 16px;
+  padding: 10px;
   background: #e8e8e4;
-  min-height: 420px;
+  min-height: 0;
 }
 
 .stage {
@@ -561,8 +561,8 @@ onBeforeUnmount(() => {
   border: 1px solid #cfcfc9;
   overflow: hidden;
   flex-shrink: 0;
-  min-width: 280px;
-  min-height: 396px;
+  min-width: 200px;
+  min-height: 280px;
 }
 
 .page-frame {

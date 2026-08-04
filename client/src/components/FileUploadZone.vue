@@ -1,7 +1,7 @@
 <template>
   <div
     class="upload-zone panel"
-    :class="{ dragover }"
+    :class="{ dragover, compact: files.length > 0 }"
     @dragenter.prevent="dragover = true"
     @dragover.prevent="dragover = true"
     @dragleave.prevent="onLeave"
@@ -17,7 +17,7 @@
       @click.stop
     />
     <p class="hint">
-      Перетягніть файли сюди або натисніть, щоб обрати
+      Перетягніть файли сюди або натисніть
       <span>(doc, pdf, зображення, таблиці, djvu…)</span>
     </p>
 
@@ -37,7 +37,7 @@
         @click="select(f.id)"
       >
         <span class="icon-wrap" :style="{ color: meta(f).color }">
-          <Icon :icon="meta(f).icon" width="36" height="36" />
+          <Icon :icon="meta(f).icon" width="28" height="28" />
         </span>
         <span class="name" :title="f.file.name">{{ f.file.name }}</span>
         <span class="size">{{ formatBytes(f.file.size) }}</span>
@@ -116,10 +116,15 @@ function previewLabel(f) {
 
 <style scoped lang="scss">
 .upload-zone {
-  padding: 16px;
-  min-height: 120px;
+  padding: 8px 10px;
+  min-height: 52px;
+  max-height: 118px;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
 
   &.dragover {
     border-color: var(--accent);
@@ -128,38 +133,42 @@ function previewLabel(f) {
 }
 
 .hint {
-  margin: 0 0 12px;
+  margin: 0;
   color: var(--muted);
-  font-size: 0.95rem;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  flex-shrink: 0;
 
   span {
-    display: block;
-    font-size: 0.8rem;
-    margin-top: 4px;
+    color: #888;
+    font-size: 0.72rem;
+    margin-left: 4px;
   }
 }
 
 .thumbs {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   overflow-x: auto;
-  padding-bottom: 6px;
+  overflow-y: hidden;
+  padding-bottom: 2px;
   cursor: default;
   scrollbar-width: thin;
+  min-height: 0;
 }
 
 .thumb {
   position: relative;
-  flex: 0 0 110px;
-  width: 110px;
+  flex: 0 0 92px;
+  width: 92px;
   border: 1px solid var(--border);
   background: #fafafa;
   border-radius: var(--radius);
-  padding: 10px 8px 8px;
+  padding: 6px 6px 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   text-align: center;
 
   &.active {
@@ -171,12 +180,12 @@ function previewLabel(f) {
 .icon-wrap {
   display: grid;
   place-items: center;
-  height: 40px;
+  height: 28px;
 }
 
 .name {
-  font-size: 0.72rem;
-  line-height: 1.2;
+  font-size: 0.65rem;
+  line-height: 1.15;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -184,12 +193,12 @@ function previewLabel(f) {
 }
 
 .size {
-  font-size: 0.68rem;
+  font-size: 0.6rem;
   color: var(--muted);
 }
 
 .preview-badge {
-  font-size: 0.62rem;
+  font-size: 0.58rem;
   text-transform: lowercase;
   color: var(--muted);
 
@@ -200,12 +209,12 @@ function previewLabel(f) {
 
 .remove {
   position: absolute;
-  top: 2px;
-  right: 4px;
+  top: 0;
+  right: 2px;
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 1rem;
+  font-size: 0.95rem;
   line-height: 1;
   padding: 0 2px;
 }
