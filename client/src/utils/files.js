@@ -68,7 +68,7 @@ export function defaultWatermark() {
       fontSizePt: 48,
       color: '#000000',
       opacity: 0.25,
-      pattern: 'diagonal',
+      pattern: 'single',
       transform: { xPct: 0.5, yPct: 0.5, wPct: 0.5, rotationDeg: -30 }
     },
     image: {

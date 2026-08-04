@@ -131,14 +131,21 @@ async function startJob() {
 <style scoped lang="scss">
 .workspace {
   display: grid;
-  grid-template-columns: minmax(240px, 300px) 1fr;
+  grid-template-columns: 280px minmax(0, 1fr);
   gap: 12px;
   margin-top: 12px;
-  min-height: 480px;
+  min-height: 520px;
   align-items: stretch;
 
-  > * {
-    min-height: 480px;
+  > :deep(.settings) {
+    min-height: 520px;
+    max-height: 70vh;
+    overflow: auto;
+    z-index: 2;
+  }
+
+  > :deep(.preview) {
+    min-height: 520px;
     max-height: 70vh;
   }
 }
@@ -156,8 +163,11 @@ async function startJob() {
 @media (max-width: 860px) {
   .workspace {
     grid-template-columns: 1fr;
-    > * {
+
+    > :deep(.settings),
+    > :deep(.preview) {
       max-height: none;
+      min-height: 320px;
     }
   }
 }

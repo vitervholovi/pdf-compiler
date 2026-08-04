@@ -4,21 +4,38 @@
 
     <div class="section">
       <label class="toggle-row">
-        <input type="checkbox" v-model="local.text.enabled" />
+        <input
+          type="checkbox"
+          :checked="modelValue.text.enabled"
+          @change="patchText({ enabled: $event.target.checked })"
+        />
         Текст
       </label>
-      <template v-if="local.text.enabled">
+      <template v-if="modelValue.text.enabled">
         <div class="field">
           <label>Текст</label>
-          <input type="text" v-model="local.text.value" />
+          <input
+            type="text"
+            :value="modelValue.text.value"
+            @input="patchText({ value: $event.target.value })"
+          />
         </div>
         <div class="field">
           <label>Розмір шрифта (pt)</label>
-          <input type="number" min="6" max="200" v-model.number="local.text.fontSizePt" />
+          <input
+            type="number"
+            min="6"
+            max="200"
+            :value="modelValue.text.fontSizePt"
+            @input="patchText({ fontSizePt: Number($event.target.value) || 12 })"
+          />
         </div>
         <div class="field">
           <label>Шрифт</label>
-          <select v-model="local.text.fontFamily">
+          <select
+            :value="modelValue.text.fontFamily"
+            @change="patchText({ fontFamily: $event.target.value })"
+          >
             <option>Helvetica</option>
             <option>Helvetica-Bold</option>
             <option>Times</option>
@@ -28,15 +45,29 @@
         </div>
         <div class="field">
           <label>Колір</label>
-          <input type="color" v-model="local.text.color" />
+          <input
+            type="color"
+            :value="modelValue.text.color"
+            @input="patchText({ color: $event.target.value })"
+          />
         </div>
         <div class="field">
-          <label>Прозорість ({{ local.text.opacity }})</label>
-          <input type="range" min="0" max="1" step="0.01" v-model.number="local.text.opacity" />
+          <label>Прозорість ({{ modelValue.text.opacity }})</label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            :value="modelValue.text.opacity"
+            @input="patchText({ opacity: Number($event.target.value) })"
+          />
         </div>
         <div class="field">
           <label>Повторення</label>
-          <select v-model="local.text.pattern">
+          <select
+            :value="modelValue.text.pattern"
+            @change="patchText({ pattern: $event.target.value })"
+          >
             <option value="single">Один раз</option>
             <option value="tile">Плитка</option>
             <option value="diagonal">Діагональ</option>
@@ -48,26 +79,44 @@
 
     <div class="section">
       <label class="toggle-row">
-        <input type="checkbox" v-model="local.image.enabled" />
+        <input
+          type="checkbox"
+          :checked="modelValue.image.enabled"
+          @change="patchImage({ enabled: $event.target.checked })"
+        />
         Зображення
       </label>
-      <template v-if="local.image.enabled">
+      <template v-if="modelValue.image.enabled">
         <div class="field">
           <label>Файл зображення</label>
           <input type="file" accept="image/*" @change="onImage" />
         </div>
         <div v-if="imageName" class="image-name">{{ imageName }}</div>
         <div class="field">
-          <label>Прозорість ({{ local.image.opacity }})</label>
-          <input type="range" min="0" max="1" step="0.01" v-model.number="local.image.opacity" />
+          <label>Прозорість ({{ modelValue.image.opacity }})</label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            :value="modelValue.image.opacity"
+            @input="patchImage({ opacity: Number($event.target.value) })"
+          />
         </div>
         <label class="toggle-row">
-          <input type="checkbox" v-model="local.image.grayscale" />
+          <input
+            type="checkbox"
+            :checked="modelValue.image.grayscale"
+            @change="patchImage({ grayscale: $event.target.checked })"
+          />
           Чорно-біле
         </label>
         <div class="field">
           <label>Повторення</label>
-          <select v-model="local.image.pattern">
+          <select
+            :value="modelValue.image.pattern"
+            @change="patchImage({ pattern: $event.target.value })"
+          >
             <option value="single">Один раз</option>
             <option value="tile">Плитка</option>
             <option value="diagonal">Діагональ</option>
@@ -80,7 +129,7 @@
 </template>
 
 <script setup>
-import { reactive, watch, ref } from 'vue';
+import { ref, watch } from 'vue';
 
 const props = defineProps({
   modelValue: { type: Object, required: true },
@@ -89,24 +138,28 @@ const props = defineProps({
 
 const emit = defineEmits(['update:modelValue', 'update:watermarkImageFile']);
 
-const local = reactive(structuredClone(props.modelValue));
 const imageName = ref(props.watermarkImageFile?.name || '');
 
 watch(
-  local,
-  () => emit('update:modelValue', structuredClone(local)),
-  { deep: true }
+  () => props.watermarkImageFile,
+  (f) => {
+    imageName.value = f?.name || '';
+  }
 );
 
-watch(
-  () => props.modelValue,
-  (v) => {
-    // sync fontSize / transforms from preview back into form
-    Object.assign(local.text, structuredClone(v.text));
-    Object.assign(local.image, structuredClone(v.image));
-  },
-  { deep: true }
-);
+function patchText(partial) {
+  emit('update:modelValue', {
+    ...props.modelValue,
+    text: { ...props.modelValue.text, ...partial }
+  });
+}
+
+function patchImage(partial) {
+  emit('update:modelValue', {
+    ...props.modelValue,
+    image: { ...props.modelValue.image, ...partial }
+  });
+}
 
 function onImage(e) {
   const file = e.target.files?.[0] || null;
@@ -120,6 +173,7 @@ function onImage(e) {
   padding: 14px;
   overflow: auto;
   min-height: 0;
+  background: var(--surface);
 }
 
 h2 {
