@@ -224,6 +224,8 @@ async function startJob() {
   > :deep(.preview) {
     min-height: 520px;
     max-height: 70vh;
+    display: flex;
+    flex-direction: column;
   }
 }
 

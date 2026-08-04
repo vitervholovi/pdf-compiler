@@ -13,6 +13,9 @@
       <p v-if="statusHint" class="hint">{{ statusHint }}</p>
 
       <div class="stage" :style="stageStyle">
+        <div class="page-frame" aria-hidden="true">
+          <span v-if="!hasPdf && !hasImage" class="page-label">A4</span>
+        </div>
         <canvas ref="canvas" class="page-canvas" v-show="hasPdf" />
         <img
           v-if="hasImage && docImageUrl"
@@ -86,7 +89,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onBeforeUnmount, nextTick, reactive } from 'vue';
+import { computed, ref, watch, onBeforeUnmount, onMounted, nextTick, reactive } from 'vue';
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { tileGhostsFromPrimary } from '../utils/tiling.js';
@@ -107,13 +110,14 @@ const canvas = ref(null);
 const page = ref(1);
 const pageCount = ref(0);
 const pageSize = ref({ w: 595.28, h: 841.89 });
-const displayScale = ref(0.85);
+const displayScale = ref(0.75);
 const imagePreviewUrl = ref(null);
 const docImageUrl = ref(null);
 const active = ref(null);
 const hasPdf = ref(false);
 const hasImage = ref(false);
 const handles = ['nw', 'ne', 'sw', 'se'];
+const stageReady = ref(false);
 
 const wm = reactive(structuredClone(props.watermark));
 
@@ -153,10 +157,15 @@ function commitWm() {
   emit('update:watermark', structuredClone(wm));
 }
 
-const stageStyle = computed(() => ({
-  width: `${Math.max(120, pageSize.value.w * displayScale.value)}px`,
-  height: `${Math.max(160, pageSize.value.h * displayScale.value)}px`
-}));
+const stageStyle = computed(() => {
+  const w = Math.max(280, pageSize.value.w * displayScale.value);
+  const h = Math.max(396, pageSize.value.h * displayScale.value);
+  return {
+    width: `${w}px`,
+    height: `${h}px`,
+    visibility: stageReady.value ? 'visible' : 'visible'
+  };
+});
 
 const stageW = computed(() => pageSize.value.w * displayScale.value);
 const stageH = computed(() => pageSize.value.h * displayScale.value);
@@ -256,9 +265,13 @@ function boxPosStyle(pos) {
 }
 
 function fitScale(w, h) {
-  const maxW = wrap.value?.clientWidth ? wrap.value.clientWidth - 32 : 560;
-  const maxH = wrap.value?.clientHeight ? wrap.value.clientHeight - 48 : 640;
-  displayScale.value = Math.min(maxW / w, maxH / h, 1.25);
+  const wrapW = wrap.value?.clientWidth || 0;
+  const wrapH = wrap.value?.clientHeight || 0;
+  const maxW = Math.max(280, (wrapW || 520) - 32);
+  const maxH = Math.max(396, (wrapH || 560) - 48);
+  const raw = Math.min(maxW / w, maxH / h, 1.15);
+  displayScale.value = Math.max(0.4, raw);
+  stageReady.value = true;
 }
 
 function resetBlank() {
@@ -377,6 +390,18 @@ watch(page, () => {
   if (pdfDoc) renderPage();
 });
 
+let resizeObs = null;
+onMounted(() => {
+  resetBlank();
+  if (wrap.value && typeof ResizeObserver !== 'undefined') {
+    resizeObs = new ResizeObserver(() => {
+      fitScale(pageSize.value.w, pageSize.value.h);
+      if (pdfDoc) renderPage();
+    });
+    resizeObs.observe(wrap.value);
+  }
+});
+
 watch(
   () => props.watermarkImageFile,
   (f) => {
@@ -472,6 +497,7 @@ function clamp(n, a, b) {
 
 onBeforeUnmount(() => {
   cleanupPdf();
+  resizeObs?.disconnect();
   if (imagePreviewUrl.value) URL.revokeObjectURL(imagePreviewUrl.value);
   if (docImageUrl.value) URL.revokeObjectURL(docImageUrl.value);
   window.removeEventListener('pointermove', onMove);
@@ -522,23 +548,48 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 12px;
+  justify-content: flex-start;
+  padding: 16px;
   background: #e8e8e4;
-  min-height: 360px;
+  min-height: 420px;
 }
 
 .stage {
   position: relative;
   background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+  border: 1px solid #cfcfc9;
   overflow: hidden;
   flex-shrink: 0;
+  min-width: 280px;
+  min-height: 396px;
+}
+
+.page-frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    linear-gradient(#f3f3f0 1px, transparent 1px) 0 0 / 100% 24px,
+    #fff;
+  opacity: 0.35;
+}
+
+.page-label {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 0.75rem;
+  color: #888;
+  letter-spacing: 0.04em;
 }
 
 .blank-page {
   position: absolute;
   inset: 0;
-  background: #fff;
+  background: transparent;
+  z-index: 0;
 }
 
 .page-canvas {
