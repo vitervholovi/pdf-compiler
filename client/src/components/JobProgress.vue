@@ -42,6 +42,7 @@ function label(e) {
     file_error: 'Помилка файлу',
     warning: 'Попередження',
     zipping: 'Архівування',
+    cleanup: 'Очищення',
     completed: 'Завершено',
     failed: 'Невдача'
   };

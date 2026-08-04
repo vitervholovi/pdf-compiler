@@ -41,6 +41,7 @@
         </span>
         <span class="name" :title="f.file.name">{{ f.file.name }}</span>
         <span class="size">{{ formatBytes(f.file.size) }}</span>
+        <span class="preview-badge" :class="f.previewStatus">{{ previewLabel(f) }}</span>
         <button type="button" class="remove" title="Прибрати" @click.stop="remove(i)">×</button>
       </button>
     </div>
@@ -98,6 +99,17 @@ function select(id) {
 
 function remove(i) {
   emit('remove', i);
+}
+
+function previewLabel(f) {
+  const map = {
+    pending: 'чекає',
+    converting: 'preview…',
+    ready: 'preview',
+    error: 'помилка',
+    done: 'готово'
+  };
+  return map[f.previewStatus] || '';
 }
 </script>
 
@@ -173,6 +185,16 @@ function remove(i) {
 .size {
   font-size: 0.68rem;
   color: var(--muted);
+}
+
+.preview-badge {
+  font-size: 0.62rem;
+  text-transform: lowercase;
+  color: var(--muted);
+
+  &.converting { color: #b78100; }
+  &.ready { color: var(--accent); }
+  &.error { color: var(--danger); }
 }
 
 .remove {

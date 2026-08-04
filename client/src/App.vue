@@ -24,18 +24,17 @@
     </div>
 
     <div class="actions panel">
-      <label class="toggle-row">
-        <input type="checkbox" v-model="convertToPdf" />
-        Перетворити усі файли в PDF
-      </label>
       <button
         type="button"
         class="btn btn-primary"
-        :disabled="!files.length || busy"
+        :disabled="!files.length || busy || !allPreviewsReady"
         @click="startJob"
       >
         {{ busy ? 'Обробка…' : 'Перетворити' }}
       </button>
+      <span v-if="files.length && !allPreviewsReady" class="wait-hint">
+        Чекаємо швидкий preview…
+      </span>
     </div>
 
     <JobProgress :events="events" :download-url="downloadUrl" />
@@ -54,7 +53,6 @@ const files = ref([]);
 const selectedId = ref(null);
 const watermark = ref(defaultWatermark());
 const watermarkImageFile = ref(null);
-const convertToPdf = ref(true);
 const events = ref([]);
 const downloadUrl = ref(null);
 const busy = ref(false);
@@ -62,17 +60,52 @@ let es = null;
 
 const selectedFile = computed(() => files.value.find((f) => f.id === selectedId.value) || null);
 
+const allPreviewsReady = computed(() =>
+  files.value.length > 0
+  && files.value.every((f) => f.previewStatus === 'ready' || f.previewStatus === 'error')
+);
+
+async function requestQuickPreview(entry) {
+  entry.previewStatus = 'converting';
+  const fd = new FormData();
+  fd.append('file', entry.file, entry.file.name);
+  try {
+    const res = await fetch('/api/preview', { method: 'POST', body: fd });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Preview failed');
+    }
+    const data = await res.json();
+    entry.previewId = data.previewId;
+    entry.previewUrl = data.url;
+    entry.previewStatus = 'ready';
+  } catch (e) {
+    entry.previewStatus = 'error';
+    entry.previewError = e.message;
+  }
+}
+
 function onAdd(list) {
   const added = list.map((file) => ({
     id: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
-    file
+    file,
+    previewId: null,
+    previewUrl: null,
+    previewStatus: 'pending',
+    previewError: null
   }));
   files.value.push(...added);
   if (!selectedId.value && added[0]) selectedId.value = added[0].id;
+  for (const entry of added) {
+    requestQuickPreview(entry);
+  }
 }
 
-function onRemove(i) {
+async function onRemove(i) {
   const removed = files.value.splice(i, 1)[0];
+  if (removed?.previewId) {
+    fetch(`/api/preview/${removed.previewId}`, { method: 'DELETE' }).catch(() => {});
+  }
   if (removed && removed.id === selectedId.value) {
     selectedId.value = files.value[0]?.id || null;
   }
@@ -89,8 +122,12 @@ async function startJob() {
   }
 
   const fd = new FormData();
-  for (const f of files.value) fd.append('files', f.file, f.file.name);
-  fd.append('convertToPdf', String(convertToPdf.value));
+  const previewIds = [];
+  for (const f of files.value) {
+    fd.append('files', f.file, f.file.name);
+    previewIds.push(f.previewId || null);
+  }
+  fd.append('previewIds', JSON.stringify(previewIds));
   fd.append('watermark', JSON.stringify(watermark.value));
   if (watermark.value.image.enabled && watermarkImageFile.value) {
     fd.append('watermarkImage', watermarkImageFile.value);
@@ -114,7 +151,16 @@ async function startJob() {
       }
       events.value.push(data);
       if (data.downloadUrl) downloadUrl.value = data.downloadUrl;
-      if (data.type === 'completed' || data.type === 'failed') {
+      if (data.type === 'completed') {
+        // previews deleted on server — clear client refs
+        for (const f of files.value) {
+          f.previewUrl = null;
+          f.previewId = null;
+          f.previewStatus = 'done';
+        }
+        busy.value = false;
+      }
+      if (data.type === 'failed') {
         busy.value = false;
       }
     };
@@ -155,9 +201,13 @@ async function startJob() {
   padding: 12px 14px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.wait-hint {
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 @media (max-width: 860px) {

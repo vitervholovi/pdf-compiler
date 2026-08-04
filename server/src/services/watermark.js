@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import sharp from 'sharp';
 import { PDFDocument, rgb, degrees, StandardFonts } from 'pdf-lib';
+import { tilePositionsPdf } from '../utils/tiling.js';
 
 function hexToRgb(hex = '#000000') {
   const h = hex.replace('#', '');
@@ -11,32 +12,6 @@ function hexToRgb(hex = '#000000') {
     g: ((n >> 8) & 255) / 255,
     b: (n & 255) / 255
   };
-}
-
-function patternPositions(pattern, pageW, pageH, w, h) {
-  const cx = pageW / 2;
-  const cy = pageH / 2;
-  if (pattern === 'single' || !pattern) {
-    return [{ x: cx - w / 2, y: cy - h / 2 }];
-  }
-  const stepX = Math.max(w * 1.4, 80);
-  const stepY = Math.max(h * 1.4, 80);
-  const positions = [];
-  if (pattern === 'diagonal') {
-    for (let y = -stepY; y < pageH + stepY; y += stepY) {
-      for (let x = -stepX; x < pageW + stepX; x += stepX) {
-        positions.push({ x: x + ((Math.floor(y / stepY) % 2) * stepX) / 2, y });
-      }
-    }
-    return positions;
-  }
-  // tile / grid
-  for (let y = 0; y < pageH; y += stepY) {
-    for (let x = 0; x < pageW; x += stepX) {
-      positions.push({ x, y });
-    }
-  }
-  return positions;
 }
 
 async function loadFont(pdf, fontFamily) {
@@ -91,17 +66,25 @@ export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
       const t = imageLayer.transform || {};
       const wPct = Math.min(Math.max(Number(t.wPct) || 0.35, 0.05), 1);
       const w = pageW * wPct;
-      const aspect = embeddedImage.height / embeddedImage.width;
+      const aspect = embeddedImage.height / embeddedImage.width || 0.75;
       const h = w * aspect;
       const xPct = t.xPct != null ? Number(t.xPct) : 0.5;
       const yPct = t.yPct != null ? Number(t.yPct) : 0.5;
       const rotation = Number(t.rotationDeg) || 0;
       const opacity = Math.min(Math.max(Number(imageLayer.opacity) ?? 0.3, 0), 1);
       const pattern = imageLayer.pattern || 'single';
+      const primaryX = pageW * xPct - w / 2;
+      const primaryY = pageH * (1 - yPct) - h / 2;
 
-      const positions = pattern === 'single'
-        ? [{ x: pageW * xPct - w / 2, y: pageH * (1 - yPct) - h / 2 }]
-        : patternPositions(pattern, pageW, pageH, w, h);
+      const positions = tilePositionsPdf({
+        pattern,
+        pageW,
+        pageH,
+        primaryX,
+        primaryY,
+        boxW: w,
+        boxH: h
+      });
 
       for (const pos of positions) {
         page.drawImage(embeddedImage, {
@@ -127,10 +110,18 @@ export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
       const opacity = Math.min(Math.max(Number(textLayer.opacity) ?? 0.25, 0), 1);
       const color = hexToRgb(textLayer.color || '#000000');
       const pattern = textLayer.pattern || 'single';
+      const primaryX = pageW * xPct - textW / 2;
+      const primaryY = pageH * (1 - yPct) - textH / 2;
 
-      const positions = pattern === 'single'
-        ? [{ x: pageW * xPct - textW / 2, y: pageH * (1 - yPct) - textH / 2 }]
-        : patternPositions(pattern, pageW, pageH, textW, textH);
+      const positions = tilePositionsPdf({
+        pattern,
+        pageW,
+        pageH,
+        primaryX,
+        primaryY,
+        boxW: textW,
+        boxH: textH
+      });
 
       for (const pos of positions) {
         page.drawText(text, {

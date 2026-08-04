@@ -5,7 +5,7 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { createJob, getJob } from '../services/jobs.js';
 
-export function jobsRouter({ uploadsDir, resultsDir }) {
+export function jobsRouter({ uploadsDir, resultsDir, previewStore }) {
   const router = Router();
 
   const storage = multer.diskStorage({
@@ -53,19 +53,28 @@ export function jobsRouter({ uploadsDir, resultsDir }) {
           watermark = {};
         }
 
-        const convertToPdf = String(req.body.convertToPdf || 'true') !== 'false';
+        let previewIds = [];
+        try {
+          previewIds = JSON.parse(req.body.previewIds || '[]');
+        } catch {
+          previewIds = [];
+        }
+        files.forEach((f, i) => {
+          f.previewId = previewIds[i] || null;
+        });
+
         const wmImage = req.files?.watermarkImage?.[0];
 
         createJob({
           id: jobId,
           files,
           options: {
-            convertToPdf,
             watermark,
             watermarkImageStoredName: wmImage?.filename || null
           },
           uploadsDir,
-          resultsDir
+          resultsDir,
+          previewStore
         });
 
         res.status(201).json({ jobId });

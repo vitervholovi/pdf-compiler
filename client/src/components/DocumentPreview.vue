@@ -2,7 +2,7 @@
   <section class="preview panel">
     <div class="toolbar">
       <span class="title">Передперегляд</span>
-      <div v-if="canShow && pageCount > 0" class="pager">
+      <div v-if="pageCount > 0" class="pager">
         <button type="button" class="btn" :disabled="page <= 1" @click="page--">←</button>
         <span>{{ page }} / {{ pageCount }}</span>
         <button type="button" class="btn" :disabled="page >= pageCount" @click="page++">→</button>
@@ -10,81 +10,73 @@
     </div>
 
     <div class="stage-wrap" ref="wrap">
-      <p v-if="!file" class="hint">Порожня сторінка A4 — налаштуйте watermark. Оберіть PDF/зображення для точного прев’ю.</p>
-      <p v-else-if="!canShow" class="hint">Неможливо показати вміст цього файлу — watermark на порожній сторінці.</p>
+      <p v-if="!file" class="hint">Оберіть файл — після швидкої конвертації з’явиться прев’ю PDF.</p>
+      <p v-else-if="file.previewStatus === 'pending' || file.previewStatus === 'converting'" class="hint">
+        Швидка конвертація для передперегляду…
+      </p>
+      <p v-else-if="file.previewStatus === 'error'" class="hint">
+        Не вдалося створити preview: {{ file.previewError || 'помилка' }}
+      </p>
 
-      <div class="stage" :style="stageStyle" @pointerdown="onStageDown">
-        <canvas v-show="isPdf && canShow" ref="canvas" class="page-canvas" />
-        <img
-          v-if="isImage && canShow && objectUrl"
-          :src="objectUrl"
-          class="page-image"
-          alt=""
-          @load="onImageLoad"
-        />
-        <div v-else-if="!canShow || !file" class="blank-page" />
+      <div class="stage" :style="stageStyle">
+        <canvas ref="canvas" class="page-canvas" v-show="hasPdf" />
+        <div v-if="!hasPdf" class="blank-page" />
 
-        <!-- Ghost tiles (non-interactive) -->
-        <template v-if="watermark.text.enabled">
+        <template v-if="wm.text.enabled">
           <div
             v-for="(pos, idx) in textGhosts"
             :key="'tg-' + idx"
-            class="wm wm-text ghost"
-            :style="wmTextStyle(pos)"
+            class="wm ghost"
+            :style="boxPosStyle(pos)"
           >
-            <span class="wm-label">{{ watermark.text.value }}</span>
+            <span class="wm-visual" :style="textVisualStyle">{{ wm.text.value }}</span>
           </div>
         </template>
-        <template v-if="watermark.image.enabled && imagePreviewUrl">
+        <template v-if="wm.image.enabled && imagePreviewUrl">
           <div
             v-for="(pos, idx) in imageGhosts"
             :key="'ig-' + idx"
-            class="wm wm-image ghost"
-            :style="wmBoxStyle(pos, watermark.image)"
+            class="wm ghost"
+            :style="boxPosStyle(pos)"
           >
-            <img :src="imagePreviewUrl" alt="" :style="wmImageStyle" />
+            <img class="wm-visual" :src="imagePreviewUrl" alt="" :style="imageVisualStyle" />
           </div>
         </template>
 
-        <!-- Primary interactive text -->
         <div
-          v-if="watermark.text.enabled"
-          class="wm wm-text primary"
-          :class="{ active: activeHandle === 'text' }"
-          :style="wmTextStyle(textPrimary)"
-          @pointerdown.stop="startDrag($event, 'text')"
+          v-if="wm.text.enabled"
+          class="wm primary"
+          :class="{ active: active === 'text' }"
+          :style="boxPosStyle(textPrimary)"
+          @pointerdown="onPrimaryDown($event, 'text')"
         >
-          <span class="wm-label">{{ watermark.text.value || ' ' }}</span>
+          <span class="wm-visual" :style="textVisualStyle">{{ wm.text.value || ' ' }}</span>
           <span
             v-for="h in handles"
             :key="'th-' + h"
             class="handle"
             :data-handle="h"
-            @pointerdown.stop="startResize($event, 'text', h)"
+            @pointerdown.stop="onResizeDown($event, 'text', h)"
           />
         </div>
 
-        <!-- Primary interactive image -->
         <div
-          v-if="watermark.image.enabled && imagePreviewUrl"
-          class="wm wm-image primary"
-          :class="{ active: activeHandle === 'image' }"
-          :style="wmBoxStyle(imagePrimary, watermark.image)"
-          @pointerdown.stop="startDrag($event, 'image')"
+          v-if="wm.image.enabled && imagePreviewUrl"
+          class="wm primary"
+          :class="{ active: active === 'image' }"
+          :style="boxPosStyle(imagePrimary)"
+          @pointerdown="onPrimaryDown($event, 'image')"
         >
-          <img :src="imagePreviewUrl" alt="" :style="wmImageStyle" />
+          <img class="wm-visual" :src="imagePreviewUrl" alt="" :style="imageVisualStyle" />
           <span
             v-for="h in handles"
             :key="'ih-' + h"
             class="handle"
             :data-handle="h"
-            @pointerdown.stop="startResize($event, 'image', h)"
+            @pointerdown.stop="onResizeDown($event, 'image', h)"
           />
         </div>
-        <div
-          v-else-if="watermark.image.enabled && !imagePreviewUrl"
-          class="wm-placeholder"
-        >
+        <div v-else-if="wm.image.enabled && !imagePreviewUrl" class="wm-placeholder">
           Оберіть зображення watermark зліва
         </div>
       </div>
@@ -93,10 +85,10 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onBeforeUnmount, nextTick, onMounted } from 'vue';
+import { computed, ref, watch, onBeforeUnmount, nextTick, reactive } from 'vue';
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { canPreviewClient, isImageFile, isPdfFile } from '../utils/files.js';
+import { tileGhostsFromPrimary } from '../utils/tiling.js';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
@@ -114,83 +106,59 @@ const page = ref(1);
 const pageCount = ref(0);
 const pageSize = ref({ w: 595.28, h: 841.89 });
 const displayScale = ref(0.85);
-const objectUrl = ref(null);
 const imagePreviewUrl = ref(null);
-const activeHandle = ref(null);
+const active = ref(null);
+const hasPdf = ref(false);
 const handles = ['nw', 'ne', 'sw', 'se'];
 
-let pdfDoc = null;
-let dragState = null;
+const wm = reactive(structuredClone(props.watermark));
 
-const canShow = computed(() => props.file && canPreviewClient(props.file.file.name));
-const isPdf = computed(() => props.file && isPdfFile(props.file.file.name));
-const isImage = computed(() => props.file && isImageFile(props.file.file.name));
+let pdfDoc = null;
+let drag = null;
+let syncingFromParent = false;
+
+watch(
+  () => props.watermark,
+  (v) => {
+    if (drag) return;
+    syncingFromParent = true;
+    Object.assign(wm.text, structuredClone(v.text));
+    Object.assign(wm.image, structuredClone(v.image));
+    syncingFromParent = false;
+  },
+  { deep: true }
+);
+
+function commitWm() {
+  if (syncingFromParent) return;
+  emit('update:watermark', structuredClone(wm));
+}
 
 const stageStyle = computed(() => ({
   width: `${Math.max(120, pageSize.value.w * displayScale.value)}px`,
   height: `${Math.max(160, pageSize.value.h * displayScale.value)}px`
 }));
 
-const wmImageStyle = computed(() => ({
-  opacity: props.watermark.image.opacity,
-  filter: props.watermark.image.grayscale ? 'grayscale(1)' : 'none',
-  width: '100%',
-  height: '100%',
-  objectFit: 'contain',
-  pointerEvents: 'none'
-}));
-
-function patternGhosts(pattern, stageW, stageH, boxW, boxH, xPct, yPct) {
-  if (pattern === 'single' || !pattern) return [];
-  const stepX = Math.max(boxW * 1.4, 80);
-  const stepY = Math.max(boxH * 1.4, 80);
-  const positions = [];
-  const primaryLeft = stageW * xPct - boxW / 2;
-  const primaryTop = stageH * yPct - boxH / 2;
-
-  const push = (left, top) => {
-    if (Math.abs(left - primaryLeft) < 2 && Math.abs(top - primaryTop) < 2) return;
-    positions.push({ left, top, w: boxW, h: boxH });
-  };
-
-  if (pattern === 'diagonal') {
-    for (let y = -stepY; y < stageH + stepY; y += stepY) {
-      for (let x = -stepX; x < stageW + stepX; x += stepX) {
-        push(x + ((Math.floor(y / stepY) % 2) * stepX) / 2, y);
-      }
-    }
-    return positions;
-  }
-  for (let y = 0; y < stageH; y += stepY) {
-    for (let x = 0; x < stageW; x += stepX) {
-      push(x, y);
-    }
-  }
-  return positions;
-}
-
 const stageW = computed(() => pageSize.value.w * displayScale.value);
 const stageH = computed(() => pageSize.value.h * displayScale.value);
 
-function textBoxSize() {
-  const t = props.watermark.text;
-  const fontPx = (t.fontSizePt || 48) * displayScale.value * (96 / 72);
+function textMetrics() {
+  const fontPx = (wm.text.fontSizePt || 48) * displayScale.value * (96 / 72);
   return {
-    w: Math.max(48, (t.value?.length || 1) * fontPx * 0.55),
-    h: Math.max(24, fontPx * 1.25),
+    w: Math.max(48, (wm.text.value?.length || 1) * fontPx * 0.55),
+    h: Math.max(28, fontPx * 1.3),
     fontPx
   };
 }
 
-function imageBoxSize() {
-  const t = props.watermark.image;
-  const w = stageW.value * (t.transform.wPct || 0.35);
-  return { w, h: w * 0.75 };
+function imageMetrics() {
+  const w = stageW.value * (wm.image.transform.wPct || 0.35);
+  return { w, h: Math.max(24, w * 0.75) };
 }
 
 const textPrimary = computed(() => {
-  const { w, h } = textBoxSize();
-  const t = props.watermark.text.transform;
+  const { w, h } = textMetrics();
+  const t = wm.text.transform;
   return {
     left: stageW.value * t.xPct - w / 2,
     top: stageH.value * t.yPct - h / 2,
@@ -200,8 +168,8 @@ const textPrimary = computed(() => {
 });
 
 const imagePrimary = computed(() => {
-  const { w, h } = imageBoxSize();
-  const t = props.watermark.image.transform;
+  const { w, h } = imageMetrics();
+  const t = wm.image.transform;
   return {
     left: stageW.value * t.xPct - w / 2,
     top: stageH.value * t.yPct - h / 2,
@@ -211,48 +179,63 @@ const imagePrimary = computed(() => {
 });
 
 const textGhosts = computed(() => {
-  const { w, h } = textBoxSize();
-  const t = props.watermark.text;
-  return patternGhosts(t.pattern, stageW.value, stageH.value, w, h, t.transform.xPct, t.transform.yPct);
+  const p = textPrimary.value;
+  return tileGhostsFromPrimary({
+    pattern: wm.text.pattern,
+    pageW: stageW.value,
+    pageH: stageH.value,
+    primaryLeft: p.left,
+    primaryTop: p.top,
+    boxW: p.w,
+    boxH: p.h
+  });
 });
 
 const imageGhosts = computed(() => {
-  const { w, h } = imageBoxSize();
-  const t = props.watermark.image;
-  return patternGhosts(t.pattern, stageW.value, stageH.value, w, h, t.transform.xPct, t.transform.yPct);
+  const p = imagePrimary.value;
+  return tileGhostsFromPrimary({
+    pattern: wm.image.pattern,
+    pageW: stageW.value,
+    pageH: stageH.value,
+    primaryLeft: p.left,
+    primaryTop: p.top,
+    boxW: p.w,
+    boxH: p.h
+  });
 });
 
-function wmBoxStyle(pos, layer) {
+const textVisualStyle = computed(() => {
+  const { fontPx } = textMetrics();
+  return {
+    color: wm.text.color,
+    opacity: wm.text.opacity,
+    fontSize: `${fontPx}px`,
+    fontFamily: wm.text.fontFamily?.includes('Times')
+      ? 'Times New Roman, Times, serif'
+      : wm.text.fontFamily?.includes('Courier')
+        ? 'Courier New, monospace'
+        : 'Helvetica, Arial, sans-serif',
+    fontWeight: wm.text.fontFamily?.includes('Bold') ? '700' : '400',
+    transform: `rotate(${wm.text.transform.rotationDeg || 0}deg)`
+  };
+});
+
+const imageVisualStyle = computed(() => ({
+  opacity: wm.image.opacity,
+  filter: wm.image.grayscale ? 'grayscale(1)' : 'none',
+  width: '100%',
+  height: '100%',
+  objectFit: 'contain',
+  transform: `rotate(${wm.image.transform.rotationDeg || 0}deg)`
+}));
+
+function boxPosStyle(pos) {
   return {
     left: `${pos.left}px`,
     top: `${pos.top}px`,
     width: `${pos.w}px`,
-    height: `${pos.h}px`,
-    transform: `rotate(${layer.transform.rotationDeg || 0}deg)`
+    height: `${pos.h}px`
   };
-}
-
-function wmTextStyle(pos) {
-  const t = props.watermark.text;
-  const { fontPx } = textBoxSize();
-  return {
-    ...wmBoxStyle(pos, t),
-    color: t.color,
-    opacity: t.opacity,
-    fontSize: `${fontPx}px`,
-    fontFamily: t.fontFamily?.includes('Times')
-      ? 'Times New Roman, Times, serif'
-      : t.fontFamily?.includes('Courier')
-        ? 'Courier New, monospace'
-        : 'Helvetica, Arial, sans-serif',
-    fontWeight: t.fontFamily?.includes('Bold') ? '700' : '400'
-  };
-}
-
-function patchWatermark(mutator) {
-  const next = structuredClone(props.watermark);
-  mutator(next);
-  emit('update:watermark', next);
 }
 
 function fitScale(w, h) {
@@ -261,37 +244,33 @@ function fitScale(w, h) {
   displayScale.value = Math.min(maxW / w, maxH / h, 1.25);
 }
 
-function resetBlankPage() {
-  pageSize.value = { w: 595.28, h: 841.89 };
+function resetBlank() {
+  hasPdf.value = false;
   pageCount.value = 0;
+  page.value = 1;
+  pageSize.value = { w: 595.28, h: 841.89 };
   nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
 }
 
-async function loadFile() {
+async function loadPreview() {
   cleanupPdf();
-  page.value = 1;
-  pageCount.value = 0;
-  if (objectUrl.value) {
-    URL.revokeObjectURL(objectUrl.value);
-    objectUrl.value = null;
-  }
-  if (!props.file || !canShow.value) {
-    resetBlankPage();
+  if (!props.file?.previewUrl) {
+    resetBlank();
     return;
   }
-
-  if (isImage.value) {
-    objectUrl.value = URL.createObjectURL(props.file.file);
-    pageCount.value = 1;
-    return;
-  }
-
-  if (isPdf.value) {
-    const data = await props.file.file.arrayBuffer();
+  try {
+    const res = await fetch(props.file.previewUrl);
+    if (!res.ok) throw new Error('preview fetch failed');
+    const data = await res.arrayBuffer();
     pdfDoc = await pdfjs.getDocument({ data }).promise;
     pageCount.value = pdfDoc.numPages;
+    page.value = 1;
+    hasPdf.value = true;
     await nextTick();
     await renderPage();
+  } catch (err) {
+    console.error(err);
+    resetBlank();
   }
 }
 
@@ -310,12 +289,6 @@ async function renderPage() {
   await pdfPage.render({ canvasContext: ctx, viewport }).promise;
 }
 
-function onImageLoad(e) {
-  const img = e.target;
-  pageSize.value = { w: img.naturalWidth || 595, h: img.naturalHeight || 842 };
-  nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
-}
-
 function cleanupPdf() {
   if (pdfDoc) {
     pdfDoc.destroy();
@@ -323,10 +296,14 @@ function cleanupPdf() {
   }
 }
 
-onMounted(() => resetBlankPage());
-watch(() => props.file, loadFile, { immediate: true });
+watch(
+  () => [props.file?.id, props.file?.previewUrl, props.file?.previewStatus],
+  () => loadPreview(),
+  { immediate: true }
+);
+
 watch(page, () => {
-  if (isPdf.value) renderPage();
+  if (pdfDoc) renderPage();
 });
 
 watch(
@@ -338,101 +315,96 @@ watch(
   { immediate: true }
 );
 
-onBeforeUnmount(() => {
-  cleanupPdf();
-  if (objectUrl.value) URL.revokeObjectURL(objectUrl.value);
-  if (imagePreviewUrl.value) URL.revokeObjectURL(imagePreviewUrl.value);
-  window.removeEventListener('pointermove', onPointerMove);
-  window.removeEventListener('pointerup', onPointerUp);
-});
-
-function startDrag(e, kind) {
+function onPrimaryDown(e, kind) {
   e.preventDefault();
-  activeHandle.value = kind;
-  const t = props.watermark[kind].transform;
-  dragState = {
-    mode: 'drag',
+  e.stopPropagation();
+  active.value = kind;
+  const t = wm[kind].transform;
+  drag = {
+    mode: 'move',
     kind,
     startX: e.clientX,
     startY: e.clientY,
     origX: t.xPct,
     origY: t.yPct
   };
-  window.addEventListener('pointermove', onPointerMove);
-  window.addEventListener('pointerup', onPointerUp);
+  e.currentTarget.setPointerCapture?.(e.pointerId);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
 }
 
-function startResize(e, kind, handle) {
+function onResizeDown(e, kind, handle) {
   e.preventDefault();
-  activeHandle.value = kind;
-  const t = props.watermark[kind].transform;
-  dragState = {
+  e.stopPropagation();
+  active.value = kind;
+  const t = wm[kind].transform;
+  drag = {
     mode: 'resize',
     kind,
     handle,
     startX: e.clientX,
     startY: e.clientY,
-    origW: kind === 'image' ? t.wPct : props.watermark.text.fontSizePt,
+    origW: kind === 'image' ? t.wPct : wm.text.fontSizePt,
     origX: t.xPct,
     origY: t.yPct,
-    shift: e.shiftKey,
-    alt: e.altKey
+    alt: e.altKey,
+    shift: e.shiftKey
   };
-  window.addEventListener('pointermove', onPointerMove);
-  window.addEventListener('pointerup', onPointerUp);
+  e.currentTarget.setPointerCapture?.(e.pointerId);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
 }
 
-function onStageDown() {
-  activeHandle.value = null;
-}
-
-function onPointerMove(e) {
-  if (!dragState) return;
-  const dx = e.clientX - dragState.startX;
-  const dy = e.clientY - dragState.startY;
+function onMove(e) {
+  if (!drag) return;
+  const dx = e.clientX - drag.startX;
+  const dy = e.clientY - drag.startY;
   const sw = stageW.value || 1;
   const sh = stageH.value || 1;
-  const alt = e.altKey || dragState.alt;
 
-  if (dragState.mode === 'drag') {
-    patchWatermark((wm) => {
-      wm[dragState.kind].transform.xPct = clamp(dragState.origX + dx / sw, 0.02, 0.98);
-      wm[dragState.kind].transform.yPct = clamp(dragState.origY + dy / sh, 0.02, 0.98);
-    });
+  if (drag.mode === 'move') {
+    wm[drag.kind].transform.xPct = clamp(drag.origX + dx / sw, 0.02, 0.98);
+    wm[drag.kind].transform.yPct = clamp(drag.origY + dy / sh, 0.02, 0.98);
     return;
   }
 
-  const signX = dragState.handle.includes('e') ? 1 : -1;
-  const delta = (dx * signX) / sw;
-
-  patchWatermark((wm) => {
-    if (dragState.kind === 'image') {
-      const nextW = clamp(dragState.origW + delta, 0.05, 1);
-      wm.image.transform.wPct = nextW;
-      if (!alt) {
-        const dw = nextW - dragState.origW;
-        if (dragState.handle.includes('e')) {
-          wm.image.transform.xPct = clamp(dragState.origX + dw / 2, 0.02, 0.98);
-        } else if (dragState.handle.includes('w')) {
-          wm.image.transform.xPct = clamp(dragState.origX - dw / 2, 0.02, 0.98);
-        }
+  const signX = drag.handle.includes('e') ? 1 : -1;
+  const alt = e.altKey || drag.alt;
+  if (drag.kind === 'image') {
+    const nextW = clamp(drag.origW + (dx * signX) / sw, 0.05, 1);
+    wm.image.transform.wPct = nextW;
+    if (!alt) {
+      const dw = nextW - drag.origW;
+      if (drag.handle.includes('e')) {
+        wm.image.transform.xPct = clamp(drag.origX + dw / 2, 0.02, 0.98);
+      } else if (drag.handle.includes('w')) {
+        wm.image.transform.xPct = clamp(drag.origX - dw / 2, 0.02, 0.98);
       }
-    } else {
-      const fontDelta = dx * signX * 0.2;
-      wm.text.fontSizePt = clamp(Math.round(dragState.origW + fontDelta), 6, 200);
     }
-  });
+  } else {
+    wm.text.fontSizePt = clamp(Math.round(drag.origW + dx * signX * 0.25), 6, 200);
+  }
 }
 
-function onPointerUp() {
-  dragState = null;
-  window.removeEventListener('pointermove', onPointerMove);
-  window.removeEventListener('pointerup', onPointerUp);
+function onUp() {
+  if (drag) {
+    drag = null;
+    commitWm();
+  }
+  window.removeEventListener('pointermove', onMove);
+  window.removeEventListener('pointerup', onUp);
 }
 
 function clamp(n, a, b) {
   return Math.min(b, Math.max(a, n));
 }
+
+onBeforeUnmount(() => {
+  cleanupPdf();
+  if (imagePreviewUrl.value) URL.revokeObjectURL(imagePreviewUrl.value);
+  window.removeEventListener('pointermove', onMove);
+  window.removeEventListener('pointerup', onUp);
+});
 </script>
 
 <style scoped lang="scss">
@@ -487,7 +459,7 @@ function clamp(n, a, b) {
   position: relative;
   background: #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
-  overflow: visible;
+  overflow: hidden;
   flex-shrink: 0;
 }
 
@@ -497,12 +469,10 @@ function clamp(n, a, b) {
   background: #fff;
 }
 
-.page-canvas,
-.page-image {
+.page-canvas {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
   pointer-events: none;
   user-select: none;
 }
@@ -513,21 +483,20 @@ function clamp(n, a, b) {
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: move;
-  user-select: none;
-  border: 1px dashed transparent;
   box-sizing: border-box;
   touch-action: none;
+  user-select: none;
 
   &.ghost {
     z-index: 1;
     pointer-events: none;
-    border: none;
   }
 
   &.primary {
     z-index: 5;
-    border-color: rgba(44, 95, 74, 0.45);
+    cursor: move;
+    border: 1px dashed rgba(44, 95, 74, 0.55);
+    background: rgba(44, 95, 74, 0.04);
   }
 
   &.active {
@@ -536,14 +505,12 @@ function clamp(n, a, b) {
   }
 }
 
-.wm-text .wm-label {
+.wm-visual {
+  pointer-events: none;
   white-space: nowrap;
-  pointer-events: none;
   line-height: 1;
-}
-
-.wm-image img {
-  pointer-events: none;
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .wm-placeholder {
@@ -562,9 +529,8 @@ function clamp(n, a, b) {
   height: 12px;
   background: var(--accent);
   border: 2px solid #fff;
-  border-radius: 1px;
   z-index: 6;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 
   &[data-handle='nw'] { left: -6px; top: -6px; cursor: nwse-resize; }
   &[data-handle='ne'] { right: -6px; top: -6px; cursor: nesw-resize; }

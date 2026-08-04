@@ -5,7 +5,6 @@ import { EventEmitter } from 'events';
 import archiver from 'archiver';
 import { convertToPdf } from './convert.js';
 import { applyWatermark } from './watermark.js';
-import { isPdf } from '../utils/mime.js';
 
 const jobs = new Map();
 
@@ -34,16 +33,18 @@ export function getJob(id) {
   return jobs.get(id);
 }
 
-export function createJob({ id, files, options, uploadsDir, resultsDir }) {
+export function createJob({ id, files, options, uploadsDir, resultsDir, previewStore }) {
   const job = createJobRecord(id);
   job.files = files.map((f) => ({
     originalName: f.originalName,
     storedName: f.storedName,
-    size: f.size
+    size: f.size,
+    previewId: f.previewId || null
   }));
   job.options = options;
   job.uploadsDir = uploadsDir;
   job.resultsDir = resultsDir;
+  job.previewStore = previewStore;
   jobs.set(id, job);
 
   setImmediate(() => runJob(job).catch((err) => {
@@ -69,8 +70,7 @@ async function zipDirectory(dir, outPath) {
 }
 
 async function runJob(job) {
-  const { options, uploadsDir, resultsDir } = job;
-  const convertAll = options.convertToPdf !== false;
+  const { options, uploadsDir, resultsDir, previewStore } = job;
   const watermark = options.watermark || {};
   const wmEnabled = !!(watermark.text?.enabled || watermark.image?.enabled);
   const workRoot = path.join(resultsDir, job.id);
@@ -82,9 +82,11 @@ async function runJob(job) {
 
   const total = job.files.length;
   let index = 0;
+  const previewIds = [];
 
   for (const file of job.files) {
     index += 1;
+    if (file.previewId) previewIds.push(file.previewId);
     const inputPath = path.join(uploadsDir, job.id, file.storedName);
     const base = path.parse(file.originalName).name;
     const filePercentBase = ((index - 1) / total) * 100;
@@ -99,30 +101,21 @@ async function runJob(job) {
     });
 
     try {
-      let workingPath = inputPath;
-      let isWorkingPdf = isPdf(file.originalName);
+      emit(job, {
+        type: 'converting',
+        currentFile: file.originalName,
+        index,
+        total,
+        step: 'converting',
+        percent: Math.round(filePercentBase + (20 / total)),
+        message: 'Повноцінна конвертація в PDF'
+      });
 
-      if (convertAll && !isWorkingPdf) {
-        emit(job, {
-          type: 'converting',
-          currentFile: file.originalName,
-          index,
-          total,
-          step: 'converting',
-          percent: Math.round(filePercentBase + (20 / total))
-        });
-        const convDir = path.join(workRoot, 'conv', String(index));
-        await fsp.mkdir(convDir, { recursive: true });
-        workingPath = await convertToPdf(inputPath, convDir);
-        isWorkingPdf = true;
-      } else if (convertAll && isWorkingPdf) {
-        const dest = path.join(workRoot, 'conv', String(index), `${base}.pdf`);
-        await fsp.mkdir(path.dirname(dest), { recursive: true });
-        await fsp.copyFile(inputPath, dest);
-        workingPath = dest;
-      }
+      const convDir = path.join(workRoot, 'conv', String(index));
+      await fsp.mkdir(convDir, { recursive: true });
+      const workingPath = await convertToPdf(inputPath, convDir, { quick: false });
 
-      if (wmEnabled && isWorkingPdf) {
+      if (wmEnabled) {
         emit(job, {
           type: 'watermarking',
           currentFile: file.originalName,
@@ -135,25 +128,14 @@ async function runJob(job) {
         const imagePath = imageName
           ? path.join(uploadsDir, job.id, imageName)
           : null;
-        const outName = convertAll || isPdf(file.originalName)
-          ? `${base}.pdf`
-          : `${base}.pdf`;
-        await applyWatermark(workingPath, path.join(outDir, outName), watermark, imagePath);
-      } else if (wmEnabled && !isWorkingPdf) {
-        emit(job, {
-          type: 'warning',
-          code: 'watermark_skipped_not_pdf',
-          currentFile: file.originalName,
-          index,
-          total,
-          message: 'Watermark пропущено: файл не PDF і конвертацію вимкнено'
-        });
-        await fsp.copyFile(inputPath, path.join(outDir, file.originalName));
-      } else if (convertAll || isWorkingPdf) {
-        const outName = isWorkingPdf ? `${base}.pdf` : file.originalName;
-        await fsp.copyFile(workingPath, path.join(outDir, outName));
+        await applyWatermark(
+          workingPath,
+          path.join(outDir, `${base}.pdf`),
+          watermark,
+          imagePath
+        );
       } else {
-        await fsp.copyFile(inputPath, path.join(outDir, file.originalName));
+        await fsp.copyFile(workingPath, path.join(outDir, `${base}.pdf`));
       }
 
       emit(job, {
@@ -188,6 +170,16 @@ async function runJob(job) {
   await zipDirectory(outDir, zipPath);
   job.downloadPath = zipPath;
   job.status = 'completed';
+
+  // delete temporary quick-preview PDFs
+  if (previewStore) {
+    await previewStore.removeMany(previewIds);
+    emit(job, {
+      type: 'cleanup',
+      message: 'Тимчасові preview-файли видалено',
+      percent: 99
+    });
+  }
 
   emit(job, {
     type: 'completed',
