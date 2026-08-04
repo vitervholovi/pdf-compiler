@@ -509,7 +509,9 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  min-width: 0;
+  min-width: 280px;
+  height: 100%;
+  background: var(--surface);
 }
 
 .toolbar {

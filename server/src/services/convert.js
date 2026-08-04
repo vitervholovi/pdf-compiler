@@ -1,38 +1,78 @@
 import { spawn } from 'child_process';
 import fs from 'fs/promises';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import sharp from 'sharp';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { extOf, fileCategory, IMAGE_EXT, DJVU_EXT, TEXT_EXT, OFFICE_EXT } from '../utils/mime.js';
+
+/** Serialize LibreOffice — concurrent soffice without unique profiles fails silently. */
+let libreOfficeChain = Promise.resolve();
+
+function enqueueLibreOffice(task) {
+  const next = libreOfficeChain.then(task, task);
+  libreOfficeChain = next.catch(() => {});
+  return next;
+}
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { ...opts, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
+    const timer = opts.timeoutMs
+      ? setTimeout(() => {
+        child.kill('SIGKILL');
+        reject(new Error(`${cmd} timed out after ${opts.timeoutMs}ms`));
+      }, opts.timeoutMs)
+      : null;
     child.stdout.on('data', (d) => { stdout += d.toString(); });
     child.stderr.on('data', (d) => { stderr += d.toString(); });
-    child.on('error', reject);
+    child.on('error', (err) => {
+      if (timer) clearTimeout(timer);
+      reject(err);
+    });
     child.on('close', (code) => {
+      if (timer) clearTimeout(timer);
       if (code === 0) resolve({ stdout, stderr });
-      else reject(new Error(`${cmd} failed (${code}): ${stderr || stdout}`));
+      else reject(new Error(`${cmd} failed (${code}): ${(stderr || stdout || '').slice(0, 500)}`));
     });
   });
 }
 
-async function convertWithLibreOffice(inputPath, outDir) {
-  await run('soffice', [
-    '--headless',
-    '--nologo',
-    '--nofirststartwizard',
-    '--convert-to', 'pdf',
-    '--outdir', outDir,
-    inputPath
-  ]);
-  const base = path.basename(inputPath, path.extname(inputPath));
-  const outPath = path.join(outDir, `${base}.pdf`);
-  await fs.access(outPath);
-  return outPath;
+async function convertWithLibreOffice(inputPath, outDir, { quick = false } = {}) {
+  return enqueueLibreOffice(async () => {
+    await fs.mkdir(outDir, { recursive: true });
+    const ext = path.extname(inputPath) || '.docx';
+    const workInput = path.join(outDir, `source${ext}`);
+    await fs.copyFile(inputPath, workInput);
+
+    const profileDir = path.join(outDir, `lo-profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    await fs.mkdir(profileDir, { recursive: true });
+    const profileUri = pathToFileURL(profileDir).href;
+
+    try {
+      await run('soffice', [
+        `-env:UserInstallation=${profileUri}`,
+        '--headless',
+        '--nologo',
+        '--nofirststartwizard',
+        '--norestore',
+        '--convert-to',
+        'pdf',
+        '--outdir',
+        outDir,
+        workInput
+      ], { timeoutMs: quick ? 120000 : 300000 });
+
+      const outPath = path.join(outDir, 'source.pdf');
+      await fs.access(outPath);
+      return outPath;
+    } finally {
+      await fs.rm(profileDir, { recursive: true, force: true }).catch(() => {});
+      await fs.rm(workInput, { force: true }).catch(() => {});
+    }
+  });
 }
 
 async function convertImageToPdf(inputPath, outPath, { quick = false } = {}) {
@@ -121,7 +161,9 @@ async function convertTextToPdf(inputPath, outPath, { quick = false } = {}) {
 
 async function convertDjvuToPdf(inputPath, outPath, { quick = false } = {}) {
   const quality = quick ? '40' : '85';
-  await run('ddjvu', ['-format=pdf', `-quality=${quality}`, inputPath, outPath]);
+  await run('ddjvu', ['-format=pdf', `-quality=${quality}`, inputPath, outPath], {
+    timeoutMs: 180000
+  });
   await fs.access(outPath);
   return outPath;
 }
@@ -155,7 +197,7 @@ export async function convertToPdf(inputPath, workDir, options = {}) {
   }
 
   if (OFFICE_EXT.has(ext) || category === 'office' || category === 'other') {
-    return convertWithLibreOffice(inputPath, workDir);
+    return convertWithLibreOffice(inputPath, workDir, { quick });
   }
 
   throw new Error(`Unsupported format: .${ext}`);

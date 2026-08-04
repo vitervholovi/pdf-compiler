@@ -29,9 +29,10 @@ export function createPreviewStore(previewsDir) {
     await fsp.mkdir(dir, { recursive: true });
     const pdfPath = await convertToPdf(inputPath, dir, { quick: true });
     const finalPath = path.join(dir, 'preview.pdf');
-    if (pdfPath !== finalPath) {
+    if (path.resolve(pdfPath) !== path.resolve(finalPath)) {
       await fsp.rename(pdfPath, finalPath).catch(async () => {
         await fsp.copyFile(pdfPath, finalPath);
+        await fsp.rm(pdfPath, { force: true }).catch(() => {});
       });
     }
     previews.set(id, {

@@ -29,15 +29,21 @@ export function previewRouter({ previewsDir, previewStore }) {
       if (!req.file) {
         return res.status(400).json({ error: 'Файл обовʼязковий' });
       }
+      console.log(`[preview] start ${req.file.originalname} (${req.file.size} bytes)`);
       const result = await previewStore.createQuickPreview(
         req.file.path,
         req.file.originalname
       );
+      console.log(`[preview] done ${req.file.originalname} -> ${result.previewId}`);
       // cleanup incoming upload
       fs.rmSync(path.dirname(req.file.path), { recursive: true, force: true });
       res.status(201).json(result);
     } catch (err) {
-      next(err);
+      console.error('[preview] failed', err);
+      if (req.file?.path) {
+        fs.rmSync(path.dirname(req.file.path), { recursive: true, force: true });
+      }
+      res.status(500).json({ error: err.message || 'Preview conversion failed' });
     }
   });
 

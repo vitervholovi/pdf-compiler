@@ -81,20 +81,32 @@ async function requestQuickPreview(entry) {
   fd.append('file', entry.file, entry.file.name);
   try {
     const res = await fetch('/api/preview', { method: 'POST', body: fd });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || 'Preview failed');
+    const raw = await res.text();
+    let data = {};
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch {
+      data = { error: raw.slice(0, 200) };
     }
-    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `Preview HTTP ${res.status}`);
+    }
     entry.previewId = data.previewId;
     entry.previewUrl = data.url;
     entry.previewKind = 'server-pdf';
     entry.previewStatus = 'ready';
   } catch (e) {
     entry.previewStatus = 'error';
-    entry.previewError = e.message;
+    entry.previewError = e.message || String(e);
     entry.previewKind = 'blank';
   }
+}
+
+/** Queue client-side preview uploads so LibreOffice is not hammered. */
+let previewQueue = Promise.resolve();
+function enqueuePreview(entry) {
+  previewQueue = previewQueue.then(() => requestQuickPreview(entry)).catch(() => {});
+  return previewQueue;
 }
 
 function makeEntry(file) {
@@ -131,7 +143,7 @@ function onAdd(list) {
   if (!selectedId.value && added[0]) selectedId.value = added[0].id;
   for (const entry of added) {
     if (entry.previewStatus === 'converting') {
-      requestQuickPreview(entry);
+      enqueuePreview(entry);
     }
   }
 }
@@ -266,21 +278,23 @@ async function startJob() {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(200px, 240px) minmax(180px, 220px) minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 220px) minmax(160px, 200px) minmax(320px, 1fr);
   gap: 8px;
   min-height: 0;
   overflow: hidden;
   align-items: stretch;
 
-  > :deep(.settings),
-  > :deep(.preview) {
+  > :deep(.settings) {
+    min-width: 0;
     min-height: 0;
     height: 100%;
-    max-height: none;
     overflow: auto;
   }
 
   > :deep(.preview) {
+    min-width: 280px;
+    min-height: 0;
+    height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
