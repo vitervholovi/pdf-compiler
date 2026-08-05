@@ -20,29 +20,38 @@
       </div>
       <div v-if="imageName" class="image-name">{{ imageName }}</div>
       <div class="field">
-        <label>Прозорість ({{ modelValue.image.opacity }})</label>
+        <label>Прозорість ({{ placement.opacity }})</label>
         <input
           type="range"
           min="0"
           max="1"
           step="0.01"
-          :value="modelValue.image.opacity"
-          @input="patchImage({ opacity: Number($event.target.value) })"
+          :value="placement.opacity"
+          @input="patchPlacement({ opacity: Number($event.target.value) })"
         />
       </div>
       <label class="toggle-row">
         <input
           type="checkbox"
-          :checked="modelValue.image.grayscale"
-          @change="patchImage({ grayscale: $event.target.checked })"
+          :checked="!!placement.grayscale"
+          @change="patchPlacement({ grayscale: $event.target.checked })"
         />
         Чорно-біле
       </label>
       <div class="field">
+        <label>Обертання (°)</label>
+        <input
+          type="number"
+          step="1"
+          :value="placement.transform.rotationDeg ?? 0"
+          @change="setRotation($event.target.value)"
+        />
+      </div>
+      <div class="field">
         <label>Повторення</label>
         <select
-          :value="modelValue.image.pattern"
-          @change="patchImage({ pattern: $event.target.value })"
+          :value="placement.pattern"
+          @change="patchPlacement({ pattern: $event.target.value })"
         >
           <option value="single">Один раз</option>
           <option value="tile">Плитка</option>
@@ -50,7 +59,7 @@
           <option value="grid">Сітка</option>
         </select>
       </div>
-      <div v-if="modelValue.image.pattern !== 'single'" class="spacing-fields">
+      <div v-if="placement.pattern !== 'single'" class="spacing-fields">
         <SpacingControl
           label="Відстань X"
           :model-value="placement.spacingX ?? 0"
@@ -110,6 +119,15 @@ function patchPlacement(partial) {
       }
     }
   });
+}
+
+function setRotation(raw) {
+  let n = Number(raw);
+  if (!Number.isFinite(n)) n = 0;
+  n = Math.round(n);
+  n = ((n + 180) % 360 + 360) % 360 - 180;
+  if (n === -180) n = 180;
+  patchPlacement({ transform: { rotationDeg: n } });
 }
 
 function onImage(e) {

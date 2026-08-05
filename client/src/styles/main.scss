@@ -165,6 +165,38 @@ h1 {
   flex-shrink: 0;
 }
 
+.app-shell .top-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--color-text);
+
+  &:hover:not(:disabled) {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+    background: var(--color-surface-accent-soft);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  svg {
+    display: block;
+  }
+}
+
 .app-shell .upload {
   flex-shrink: 0;
 }
@@ -368,6 +400,10 @@ h1 {
     &.error {
       color: var(--color-danger);
     }
+  }
+
+  .thumb.has-error {
+    border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border));
   }
 
   .remove {
@@ -606,6 +642,7 @@ h1 {
     box-sizing: border-box;
     touch-action: none;
     user-select: none;
+    transform-origin: center center;
 
     &.ghost {
       z-index: var(--z-wm-ghost);

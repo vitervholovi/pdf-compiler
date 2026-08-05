@@ -33,7 +33,8 @@
         :key="f.id"
         type="button"
         class="thumb"
-        :class="{ active: f.id === selectedId }"
+        :class="{ active: f.id === selectedId, 'has-error': f.previewStatus === 'error' }"
+        :title="thumbTitle(f)"
         @click="select(f.id)"
       >
         <span class="icon-wrap" :style="{ color: meta(f).color }">
@@ -41,7 +42,11 @@
         </span>
         <span class="name" :title="f.file.name">{{ f.file.name }}</span>
         <span class="size">{{ formatBytes(f.file.size) }}</span>
-        <span class="preview-badge" :class="f.previewStatus">{{ previewLabel(f) }}</span>
+        <span
+          class="preview-badge"
+          :class="f.previewStatus"
+          :title="f.previewStatus === 'error' ? thumbTitle(f) : undefined"
+        >{{ previewLabel(f) }}</span>
         <button type="button" class="remove" title="Прибрати" @click.stop="remove(i)">×</button>
       </button>
     </div>
@@ -111,5 +116,18 @@ function previewLabel(f) {
     done: 'готово'
   };
   return map[f.previewStatus] || '';
+}
+
+function thumbTitle(f) {
+  if (f.previewStatus === 'error') {
+    const err = String(f.previewError || '').trim();
+    return err
+      ? `Помилка генерації preview: ${err}`
+      : 'Помилка генерації preview';
+  }
+  if (f.previewStatus === 'unsupported') {
+    return 'Для цього формату точний preview недоступний';
+  }
+  return f.file?.name || '';
 }
 </script>

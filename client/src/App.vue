@@ -5,9 +5,47 @@
         <h1>PDF Compiler</h1>
         <p class="subtitle">Документи, watermark і конвертація в PDF</p>
       </div>
-      <span v-if="convertingCount" class="wait-hint">
-        Preview: {{ convertingCount }}…
-      </span>
+      <div class="top-actions">
+        <span v-if="convertingCount" class="wait-hint">
+          Preview: {{ convertingCount }}…
+        </span>
+        <button
+          type="button"
+          class="btn btn-icon"
+          :disabled="busy"
+          title="Зберегти налаштування"
+          aria-label="Зберегти налаштування"
+          @click="saveWatermarkSettings"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+            <polyline points="17 21 17 13 7 13 7 21" />
+            <polyline points="7 3 7 8 15 8" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="btn btn-icon"
+          :disabled="busy"
+          title="Завантажити налаштування"
+          aria-label="Завантажити налаштування"
+          @click="triggerLoadWatermark"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        </button>
+        <input
+          ref="wmImportInput"
+          type="file"
+          accept="application/json,.json"
+          class="sr-only"
+          @change="onLoadWatermark"
+        />
+        <span v-if="wmIoError" class="wm-io-error">{{ wmIoError }}</span>
+      </div>
     </header>
 
     <FileUploadZone
@@ -27,11 +65,13 @@
         :orientation="editOrientation"
       />
       <DocumentPreview
+        :key="`${selectedFile?.id || 'none'}:${selectedFile?.previewStatus}:${selectedFile?.previewEpoch || 0}`"
         :file="selectedFile"
         v-model:watermark="watermark"
         :watermark-image-file="watermarkImageFile"
         :edit-orientation="orientationMode === 'auto' ? null : orientationMode"
         @update:pageOrientation="onPageOrientation"
+        @update:pageLocked="pageLocked = $event"
       />
     </div>
 
@@ -52,6 +92,12 @@
               type="button"
               class="btn"
               :class="{ active: orientationMode === 'portrait' }"
+              :disabled="pageLocked && pageOrientation === 'landscape'"
+              :title="
+                pageLocked && pageOrientation === 'landscape'
+                  ? 'Поточна сторінка альбомна — книжкові налаштування недоступні'
+                  : undefined
+              "
               @click="orientationMode = 'portrait'"
             >
               Книжкова
@@ -60,25 +106,17 @@
               type="button"
               class="btn"
               :class="{ active: orientationMode === 'landscape' }"
+              :disabled="pageLocked && pageOrientation === 'portrait'"
+              :title="
+                pageLocked && pageOrientation === 'portrait'
+                  ? 'Поточна сторінка книжкова — альбомні налаштування недоступні'
+                  : undefined
+              "
               @click="orientationMode = 'landscape'"
             >
               Альбомна
             </button>
           </div>
-          <button type="button" class="btn" :disabled="busy" @click="saveWatermarkSettings">
-            Зберегти watermark
-          </button>
-          <button type="button" class="btn" :disabled="busy" @click="triggerLoadWatermark">
-            Завантажити watermark
-          </button>
-          <input
-            ref="wmImportInput"
-            type="file"
-            accept="application/json,.json"
-            class="sr-only"
-            @change="onLoadWatermark"
-          />
-          <span v-if="wmIoError" class="wm-io-error">{{ wmIoError }}</span>
         </div>
         <button
           type="button"
@@ -95,7 +133,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, ref, watch, onMounted } from 'vue';
 import FileUploadZone from './components/FileUploadZone.vue';
 import TextWatermarkSettings from './components/TextWatermarkSettings.vue';
 import ImageWatermarkSettings from './components/ImageWatermarkSettings.vue';
@@ -119,6 +157,10 @@ import {
   downloadWatermarkJson,
   parseWatermarkImport
 } from './utils/watermarkIo.js';
+import {
+  saveWatermarkToStorage,
+  loadWatermarkFromStorage
+} from './utils/watermarkStorage.js';
 import { apiUrl } from './utils/api.js';
 
 const files = ref([]);
@@ -134,7 +176,12 @@ const wmIoError = ref('');
 /** 'auto' | 'portrait' | 'landscape' */
 const orientationMode = ref('auto');
 const pageOrientation = ref('portrait');
+/** True when preview shows a real PDF/image page (lock opposite ori button). */
+const pageLocked = ref(false);
 let es = null;
+/** Skip persisting until initial localStorage hydrate finishes */
+let storageReady = false;
+let persistTimer = null;
 
 const editOrientation = computed(() =>
   orientationMode.value === 'auto' ? pageOrientation.value : orientationMode.value
@@ -142,13 +189,66 @@ const editOrientation = computed(() =>
 
 function onPageOrientation(ori) {
   pageOrientation.value = ori === 'landscape' ? 'landscape' : 'portrait';
+  // If opposite mode was selected but page is locked, fall back to auto
+  if (pageLocked.value) {
+    if (orientationMode.value === 'portrait' && pageOrientation.value === 'landscape') {
+      orientationMode.value = 'auto';
+    }
+    if (orientationMode.value === 'landscape' && pageOrientation.value === 'portrait') {
+      orientationMode.value = 'auto';
+    }
+  }
 }
+
+function applyWatermarkState(loaded, imageFile) {
+  watermark.value = normalizeWatermark(loaded);
+  if (imageFile) {
+    watermarkImageFile.value = imageFile;
+    if (!watermark.value.image.enabled) {
+      watermark.value = {
+        ...watermark.value,
+        image: { ...watermark.value.image, enabled: true }
+      };
+    }
+  }
+}
+
+async function persistWatermark() {
+  if (!storageReady) return;
+  try {
+    await saveWatermarkToStorage(watermark.value, watermarkImageFile.value);
+  } catch {
+    /* quota / private mode — ignore */
+  }
+}
+
+function schedulePersist() {
+  if (!storageReady) return;
+  clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistWatermark();
+  }, 400);
+}
+
+watch([watermark, watermarkImageFile], () => schedulePersist(), { deep: true });
+
+onMounted(async () => {
+  try {
+    const stored = await loadWatermarkFromStorage();
+    if (stored?.watermark) {
+      applyWatermarkState(stored.watermark, stored.imageFile);
+    }
+  } finally {
+    storageReady = true;
+  }
+});
 
 async function saveWatermarkSettings() {
   wmIoError.value = '';
   try {
     const payload = await buildWatermarkExport(watermark.value, watermarkImageFile.value);
     downloadWatermarkJson(payload);
+    await saveWatermarkToStorage(watermark.value, watermarkImageFile.value);
   } catch (e) {
     wmIoError.value = e.message || String(e);
   }
@@ -166,16 +266,8 @@ async function onLoadWatermark(e) {
   wmIoError.value = '';
   try {
     const { watermark: loaded, imageFile } = await parseWatermarkImport(file);
-    watermark.value = normalizeWatermark(loaded);
-    if (imageFile) {
-      watermarkImageFile.value = imageFile;
-      if (!watermark.value.image.enabled) {
-        watermark.value = {
-          ...watermark.value,
-          image: { ...watermark.value.image, enabled: true }
-        };
-      }
-    }
+    applyWatermarkState(loaded, imageFile);
+    await saveWatermarkToStorage(watermark.value, watermarkImageFile.value);
   } catch (err) {
     wmIoError.value = err.message || String(err);
   }
@@ -188,7 +280,15 @@ const convertingCount = computed(() =>
 );
 
 async function requestQuickPreview(entry) {
-  entry.previewStatus = 'converting';
+  const mark = (partial) => {
+    const i = files.value.findIndex((x) => x.id === entry.id);
+    if (i < 0) return;
+    // Replace object so Vue always notifies DocumentPreview
+    files.value[i] = { ...files.value[i], ...partial };
+    Object.assign(entry, files.value[i]);
+  };
+
+  mark({ previewStatus: 'converting', previewEpoch: Date.now() });
   const fd = new FormData();
   fd.append('file', entry.file, entry.file.name);
   try {
@@ -203,16 +303,22 @@ async function requestQuickPreview(entry) {
     if (!res.ok) {
       throw new Error(data.error || `Preview HTTP ${res.status}`);
     }
-    entry.previewId = data.previewId;
-    entry.previewUrl = data.url;
-    entry.previewKind = 'server-pdf';
-    entry.previewStatus = 'ready';
-    // Cache PDF bytes immediately — survives file switching and post-job server cleanup
+    // Cache before flipping to ready — preview load then finds bytes immediately
     await cacheServerPreview(entry.id, data.url);
+    mark({
+      previewId: data.previewId,
+      previewUrl: data.url,
+      previewKind: 'server-pdf',
+      previewStatus: 'ready',
+      previewEpoch: Date.now()
+    });
   } catch (e) {
-    entry.previewStatus = 'error';
-    entry.previewError = e.message || String(e);
-    entry.previewKind = 'blank';
+    mark({
+      previewStatus: 'error',
+      previewError: e.message || String(e),
+      previewKind: 'blank',
+      previewEpoch: Date.now()
+    });
   }
 }
 
@@ -231,7 +337,8 @@ function makeEntry(file) {
     previewUrl: null,
     previewKind: 'blank',
     previewStatus: 'ready',
-    previewError: null
+    previewError: null,
+    previewEpoch: 0
   };
 
   if (isPdfFile(file.name)) {

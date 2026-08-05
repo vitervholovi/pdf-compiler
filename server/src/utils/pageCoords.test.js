@@ -42,9 +42,17 @@ test('angle 90 CTM maps visual BL to media (mediaW, 0)', () => {
   assert.equal(y0, 0);
 });
 
-test('visualBoxToDraw uses CSS→PDF angle negation only', () => {
-  const d = visualBoxToDraw(100, 50, 80, 40, 800, -30);
+test('visualBoxToDraw with 0° keeps bottom-left origin', () => {
+  const d = visualBoxToDraw(100, 50, 80, 40, 800, 0);
   assert.equal(d.x, 100);
   assert.equal(d.y, 800 - 50 - 40);
+  assert.equal(d.pdfRotDeg, 0);
+});
+
+test('visualBoxToDraw compensates BL rotation to match CSS center', () => {
+  const d = visualBoxToDraw(100, 50, 80, 40, 800, -30);
   assert.equal(d.pdfRotDeg, 30);
+  // O = C - R30(w/2, h/2); C = (140, 730)
+  assert.ok(Math.abs(d.x - 115.35898384862244) < 1e-9);
+  assert.ok(Math.abs(d.y - 692.6794919243113) < 1e-9);
 });

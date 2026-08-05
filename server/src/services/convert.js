@@ -6,6 +6,9 @@ import sharp from 'sharp';
 import { PDFDocument, rgb } from 'pdf-lib';
 import { extOf, fileCategory, IMAGE_EXT, DJVU_EXT, TEXT_EXT, OFFICE_EXT } from '../utils/mime.js';
 import { resolveDocumentFont } from '../utils/fonts.js';
+import { maybePrepareCalcFile } from '../utils/calcWorkbook.js';
+import { stripEmptyPdfPages } from '../utils/stripEmptyPdfPages.js';
+import { patchOdsPageLayoutForFitWidth } from '../utils/odsPageLayout.js';
 
 /** Serialize LibreOffice — concurrent soffice without unique profiles fails silently. */
 let libreOfficeChain = Promise.resolve();
@@ -18,9 +21,8 @@ function enqueueLibreOffice(task) {
 
 const CALC_EXT = new Set(['xls', 'xlsx', 'ods', 'csv']);
 
-/** LibreOffice filter: each Calc sheet on exactly one PDF page. */
-const CALC_PDF_FILTER =
-  'pdf:calc_pdf_Export:{"SinglePageSheets":{"type":"boolean","value":"true"}}';
+/** Normal Calc PDF (page style / scale-to-X comes from patched ODS). */
+const CALC_PDF_FILTER = 'pdf:calc_pdf_Export';
 
 function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -47,37 +49,143 @@ function run(cmd, args, opts = {}) {
   });
 }
 
-async function convertWithLibreOffice(inputPath, outDir, { quick = false } = {}) {
-  return enqueueLibreOffice(async () => {
-    await fs.mkdir(outDir, { recursive: true });
-    const ext = path.extname(inputPath) || '.docx';
-    const workInput = path.join(outDir, `source${ext}`);
-    await fs.copyFile(inputPath, workInput);
+async function findProducedPdf(outDir, preferredName) {
+  const preferred = path.join(outDir, preferredName);
+  try {
+    await fs.access(preferred);
+    return preferred;
+  } catch {
+    const files = await fs.readdir(outDir).catch(() => []);
+    const pdfs = files.filter((f) => f.toLowerCase().endsWith('.pdf'));
+    if (pdfs.length === 1) return path.join(outDir, pdfs[0]);
+    throw new Error(
+      `LibreOffice не створив PDF (файли в каталозі: ${files.join(', ') || 'немає'})`
+    );
+  }
+}
 
-    const profileDir = path.join(outDir, `lo-profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-    await fs.mkdir(profileDir, { recursive: true });
-    const profileUri = pathToFileURL(profileDir).href;
-    const convertTo = CALC_EXT.has(ext.replace(/^\./, '').toLowerCase())
-      ? CALC_PDF_FILTER
-      : 'pdf';
+/**
+ * Calc → trim(xlsx) → ODS → patch scale-to-X=1 landscape A4 → PDF.
+ * Avoids SinglePageSheets (huge page → tiny content when scaled).
+ */
+async function convertCalcToPdf(inputPath, outDir, { quick = false } = {}) {
+  await fs.mkdir(outDir, { recursive: true });
+  const ext = path.extname(inputPath).toLowerCase() || '.xlsx';
+  const extKey = ext.replace(/^\./, '');
 
-    try {
-      await run('soffice', [
+  let sourcePath = path.join(outDir, `source${ext}`);
+  if (extKey === 'xlsx') {
+    await maybePrepareCalcFile(inputPath, sourcePath);
+  } else {
+    await fs.copyFile(inputPath, sourcePath);
+  }
+
+  const profileDir = path.join(
+    outDir,
+    `lo-profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  );
+  await fs.mkdir(profileDir, { recursive: true });
+  const profileUri = pathToFileURL(profileDir).href;
+  const timeoutMs = quick ? 120000 : 300000;
+
+  try {
+    let odsPath = sourcePath;
+    if (extKey !== 'ods') {
+      await run(
+        'soffice',
+        [
+          `-env:UserInstallation=${profileUri}`,
+          '--headless',
+          '--nologo',
+          '--nofirststartwizard',
+          '--norestore',
+          '--convert-to',
+          'ods',
+          '--outdir',
+          outDir,
+          sourcePath
+        ],
+        { timeoutMs }
+      );
+      const base = path.parse(sourcePath).name;
+      odsPath = path.join(outDir, `${base}.ods`);
+      try {
+        await fs.access(odsPath);
+      } catch {
+        const files = await fs.readdir(outDir);
+        const odss = files.filter((f) => f.toLowerCase().endsWith('.ods'));
+        if (odss.length !== 1) {
+          throw new Error(`LibreOffice не створив ODS (${files.join(', ') || 'немає'})`);
+        }
+        odsPath = path.join(outDir, odss[0]);
+      }
+    }
+
+    await patchOdsPageLayoutForFitWidth(odsPath);
+
+    await run(
+      'soffice',
+      [
         `-env:UserInstallation=${profileUri}`,
         '--headless',
         '--nologo',
         '--nofirststartwizard',
         '--norestore',
         '--convert-to',
-        convertTo,
+        CALC_PDF_FILTER,
         '--outdir',
         outDir,
-        workInput
-      ], { timeoutMs: quick ? 120000 : 300000 });
+        odsPath
+      ],
+      { timeoutMs }
+    );
 
-      const outPath = path.join(outDir, 'source.pdf');
-      await fs.access(outPath);
-      return outPath;
+    const pdfPath = await findProducedPdf(outDir, `${path.parse(odsPath).name}.pdf`);
+    await stripEmptyPdfPages(pdfPath).catch(() => {});
+    return pdfPath;
+  } finally {
+    await fs.rm(profileDir, { recursive: true, force: true }).catch(() => {});
+    await fs.rm(sourcePath, { force: true }).catch(() => {});
+  }
+}
+
+async function convertWithLibreOffice(inputPath, outDir, { quick = false } = {}) {
+  return enqueueLibreOffice(async () => {
+    const ext = path.extname(inputPath) || '.docx';
+    const extKey = ext.replace(/^\./, '').toLowerCase();
+    if (CALC_EXT.has(extKey)) {
+      return convertCalcToPdf(inputPath, outDir, { quick });
+    }
+
+    await fs.mkdir(outDir, { recursive: true });
+    const workInput = path.join(outDir, `source${ext}`);
+    await fs.copyFile(inputPath, workInput);
+
+    const profileDir = path.join(
+      outDir,
+      `lo-profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    );
+    await fs.mkdir(profileDir, { recursive: true });
+    const profileUri = pathToFileURL(profileDir).href;
+
+    try {
+      await run(
+        'soffice',
+        [
+          `-env:UserInstallation=${profileUri}`,
+          '--headless',
+          '--nologo',
+          '--nofirststartwizard',
+          '--norestore',
+          '--convert-to',
+          'pdf',
+          '--outdir',
+          outDir,
+          workInput
+        ],
+        { timeoutMs: quick ? 120000 : 300000 }
+      );
+      return findProducedPdf(outDir, 'source.pdf');
     } finally {
       await fs.rm(profileDir, { recursive: true, force: true }).catch(() => {});
       await fs.rm(workInput, { force: true }).catch(() => {});

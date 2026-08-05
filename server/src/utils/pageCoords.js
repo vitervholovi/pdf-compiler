@@ -67,11 +67,23 @@ export function withVisualCoords(page, metrics, fn) {
  * Visual top-left box → draw origin in visual bottom-left Y-up space,
  * plus pdf-lib rotation (CCW) for CSS clockwise angle.
  * Call only inside withVisualCoords (page /Rotate already handled by CTM).
+ *
+ * pdf-lib rotates around the draw origin (box bottom-left). CSS rotate() uses
+ * the box center — compensate so server output matches the client preview:
+ * O = C - Rθ(w/2, h/2).
  */
 export function visualBoxToDraw(left, top, boxW, boxH, visualH, cssRotDeg = 0) {
+  const pdfRotDeg = -(Number(cssRotDeg) || 0) || 0;
+  const rad = (pdfRotDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const cx = left + boxW / 2;
+  const cy = visualH - top - boxH / 2;
+  const halfW = boxW / 2;
+  const halfH = boxH / 2;
   return {
-    x: left,
-    y: visualH - top - boxH,
-    pdfRotDeg: -(Number(cssRotDeg) || 0)
+    x: cx - (halfW * cos - halfH * sin),
+    y: cy - (halfW * sin + halfH * cos),
+    pdfRotDeg
   };
 }

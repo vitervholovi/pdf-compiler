@@ -1,0 +1,16 @@
+/* Full DejaVu Sans (incl. Cyrillic) — matches server watermark embedding */
+@font-face {
+  font-family: 'DejaVu Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../assets/fonts/DejaVuSans.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'DejaVu Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('../assets/fonts/DejaVuSans-Bold.ttf') format('truetype');
+}

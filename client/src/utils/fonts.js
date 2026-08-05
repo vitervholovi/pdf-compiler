@@ -22,6 +22,35 @@ export function fontCssFamily(fontFamily) {
   return found?.css || 'Helvetica, Arial, sans-serif';
 }
 
+/** WinAnsi / StandardFonts cannot encode Cyrillic — mirrors server needsUnicodeFont. */
+export function needsUnicodeFont(text = '') {
+  for (const ch of String(text)) {
+    if (ch.codePointAt(0) > 255) return true;
+  }
+  return false;
+}
+
+const TTF_FAMILIES = new Set([
+  'DejaVu Sans',
+  'DejaVu Serif',
+  'DejaVu Mono',
+  'Liberation Sans',
+  'Liberation Serif',
+  'Liberation Mono'
+]);
+
+/**
+ * CSS font stack for preview that matches server embedding:
+ * Unicode text + non-TTF family → DejaVu Sans (same as resolveWatermarkFont).
+ */
+export function previewFontCssFamily(fontFamily, text = '') {
+  let family = fontFamily || 'Helvetica';
+  if (needsUnicodeFont(text) && !TTF_FAMILIES.has(family)) {
+    family = 'DejaVu Sans';
+  }
+  return fontCssFamily(family);
+}
+
 /** Map legacy fontFamily values that included Bold in the name */
 export function normalizeTextStyle(text = {}) {
   let fontFamily = text.fontFamily || 'Helvetica';

@@ -137,6 +137,44 @@ async function findTtf(fileNames) {
   return null;
 }
 
+/**
+ * Absolute TTF path for family/style (DejaVu fallback for Unicode / StandardFonts).
+ * Used when rasterizing text watermarks to PNG.
+ */
+export async function resolveWatermarkFontFile({
+  fontFamily,
+  bold = false,
+  italic = false,
+  text = ''
+}) {
+  let family = fontFamily || 'Helvetica';
+  let isBold = !!bold;
+  let isItalic = !!italic;
+
+  if (family.endsWith('-Bold')) {
+    isBold = true;
+    family = family.replace(/-Bold$/, '');
+  }
+
+  const key = styleKey(isBold, isItalic);
+  const unicode = needsUnicodeFont(text);
+
+  if (unicode && !TTF_MAP[family]) {
+    family = 'DejaVu Sans';
+  }
+
+  if (TTF_MAP[family]) {
+    const file = await findTtf(TTF_MAP[family][key] || TTF_MAP[family].regular);
+    if (file) return file;
+  }
+
+  // StandardFonts / CSS-only → closest installed TTF for rasterization
+  const fallbackFamily = unicode ? 'DejaVu Sans' : 'Liberation Sans';
+  const map = TTF_MAP[fallbackFamily] || TTF_MAP['DejaVu Sans'];
+  if (!map) return null;
+  return findTtf(map[key] || map.regular);
+}
+
 /** WinAnsi (StandardFonts) cannot encode Cyrillic / most Unicode. */
 export function needsUnicodeFont(text = '') {
   for (const ch of String(text)) {

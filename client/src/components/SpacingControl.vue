@@ -14,8 +14,6 @@
       <input
         type="number"
         class="spacing-number"
-        :min="min"
-        :max="max"
         step="1"
         :value="modelValue"
         @input="onNumber"
@@ -30,10 +28,9 @@ import { computed } from 'vue';
 const props = defineProps({
   label: { type: String, required: true },
   modelValue: { type: Number, default: 0 },
-  min: { type: Number, default: -500 },
-  max: { type: Number, default: 500 },
-  sliderMin: { type: Number, default: -200 },
-  sliderMax: { type: Number, default: 400 }
+  /** Slider track limits; number input may go outside. */
+  sliderMin: { type: Number, default: -500 },
+  sliderMax: { type: Number, default: 500 }
 });
 
 const emit = defineEmits(['update:modelValue']);
@@ -45,15 +42,18 @@ const clampedSlider = computed(() => {
   return Math.min(props.sliderMax, Math.max(props.sliderMin, v));
 });
 
-function emitValue(raw) {
+function emitValue(raw, { clampToSlider = false } = {}) {
   let n = Number(raw);
   if (!Number.isFinite(n)) n = 0;
-  n = Math.min(props.max, Math.max(props.min, Math.round(n)));
+  n = Math.round(n);
+  if (clampToSlider) {
+    n = Math.min(props.sliderMax, Math.max(props.sliderMin, n));
+  }
   emit('update:modelValue', n);
 }
 
 function onSlider(e) {
-  emitValue(e.target.value);
+  emitValue(e.target.value, { clampToSlider: true });
 }
 
 function onNumber(e) {

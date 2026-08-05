@@ -31,7 +31,7 @@
             v-for="(pos, idx) in textGhosts"
             :key="'tg-' + idx"
             class="wm ghost"
-            :style="boxPosStyle(pos)"
+            :style="boxPosStyle(pos, textPlace().transform.rotationDeg)"
           >
             <span class="wm-visual wm-text" :style="textVisualStyle">{{ wm.text.value }}</span>
           </div>
@@ -41,7 +41,7 @@
             v-for="(pos, idx) in imageGhosts"
             :key="'ig-' + idx"
             class="wm ghost"
-            :style="boxPosStyle(pos)"
+            :style="boxPosStyle(pos, imagePlace().transform.rotationDeg)"
           >
             <img class="wm-visual" :src="imagePreviewUrl" alt="" :style="imageVisualStyle" />
           </div>
@@ -51,7 +51,7 @@
           v-if="wm.text.enabled"
           class="wm primary"
           :class="{ active: active === 'text' }"
-          :style="boxPosStyle(textPrimary)"
+          :style="boxPosStyle(textPrimary, textPlace().transform.rotationDeg)"
           @pointerdown="onPrimaryDown($event, 'text')"
         >
           <span class="wm-visual wm-text" :style="textVisualStyle">{{ wm.text.value || ' ' }}</span>
@@ -64,7 +64,7 @@
           />
           <span
             class="rotate-handle"
-            title="Обертати"
+            title="Обертати (Shift — по 15°)"
             @pointerdown.stop="onRotateDown($event, 'text')"
           />
         </div>
@@ -73,7 +73,7 @@
           v-if="wm.image.enabled && imagePreviewUrl"
           class="wm primary"
           :class="{ active: active === 'image' }"
-          :style="boxPosStyle(imagePrimary)"
+          :style="boxPosStyle(imagePrimary, imagePlace().transform.rotationDeg)"
           @pointerdown="onPrimaryDown($event, 'image')"
         >
           <img class="wm-visual" :src="imagePreviewUrl" alt="" :style="imageVisualStyle" />
@@ -86,7 +86,7 @@
           />
           <span
             class="rotate-handle"
-            title="Обертати"
+            title="Обертати (Shift — по 15°)"
             @pointerdown.stop="onRotateDown($event, 'image')"
           />
         </div>
@@ -103,7 +103,7 @@ import { computed, ref, watch, onBeforeUnmount, onMounted, nextTick, reactive, t
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { tileGhostsFromPrimary } from '../utils/tiling.js';
-import { fontCssFamily } from '../utils/fonts.js';
+import { previewFontCssFamily } from '../utils/fonts.js';
 import {
   pageOrientation,
   getTextPlacement,
@@ -132,7 +132,14 @@ const props = defineProps({
   editOrientation: { type: String, default: null }
 });
 
-const emit = defineEmits(['update:watermark', 'update:pageOrientation']);
+const emit = defineEmits(['update:watermark', 'update:pageOrientation', 'update:pageLocked']);
+
+const A4_PORTRAIT = { w: 595.28, h: 841.89 };
+const A4_LANDSCAPE = { w: 841.89, h: 595.28 };
+
+function blankPageSizeFor(ori) {
+  return ori === 'landscape' ? { ...A4_LANDSCAPE } : { ...A4_PORTRAIT };
+}
 
 const wrap = ref(null);
 const canvas = ref(null);
@@ -141,6 +148,10 @@ const pageCount = ref(0);
 const pageSize = ref({ w: 595.28, h: 841.89 });
 const displayScale = ref(0.75);
 const imagePreviewUrl = ref(null);
+/** naturalHeight / naturalWidth of watermark image (matches server embed aspect) */
+const imageAspect = ref(0.75);
+/** Bumped when webfonts ready so textMetrics recomputes */
+const fontsReadyTick = ref(0);
 const docImageUrl = ref(null);
 const active = ref(null);
 const hasPdf = ref(false);
@@ -161,6 +172,23 @@ watch(
   pageOri,
   (v) => emit('update:pageOrientation', v),
   { immediate: true }
+);
+
+watch(
+  [hasPdf, hasImage],
+  () => emit('update:pageLocked', !!(hasPdf.value || hasImage.value)),
+  { immediate: true }
+);
+
+/** Blank stage follows WM orientation switch (no document loaded). */
+watch(
+  () => props.editOrientation,
+  (ori) => {
+    if (hasPdf.value || hasImage.value) return;
+    if (ori !== 'landscape' && ori !== 'portrait') return;
+    pageSize.value = blankPageSizeFor(ori);
+    nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
+  }
 );
 
 function textPlace() {
@@ -232,23 +260,54 @@ const stageStyle = computed(() => {
 const stageW = computed(() => pageSize.value.w * displayScale.value);
 const stageH = computed(() => pageSize.value.h * displayScale.value);
 
+let measureCtx = null;
+function getMeasureCtx() {
+  if (!measureCtx && typeof document !== 'undefined') {
+    measureCtx = document.createElement('canvas').getContext('2d');
+  }
+  return measureCtx;
+}
+
+/** PDF-pt text block size (same lineHeight as server), then scaled to stage px. */
 function textMetrics() {
+  void fontsReadyTick.value;
   const place = textPlace();
-  const fontPx = (place.fontSizePt || 48) * displayScale.value * (96 / 72);
-  const lines = String(wm.text.value ?? '').replace(/\r\n/g, '\n').split('\n');
-  const maxLen = Math.max(1, ...lines.map((l) => l.length));
-  const lineH = fontPx * 1.25;
+  const fontSizePt = Number(place.fontSizePt) || 48;
+  const lineHeightPt = fontSizePt * 1.25;
+  const lines = String(wm.text.value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const family = previewFontCssFamily(place.fontFamily, wm.text.value);
+  const weight = place.bold ? '700' : '400';
+  const style = place.italic ? 'italic' : 'normal';
+  // Measure at 100px then scale → PDF pt (pdf-lib uses 1pt ≈ same relative glyph width)
+  const samplePx = 100;
+  const ctx = getMeasureCtx();
+  let maxWPt = fontSizePt * 0.5;
+  if (ctx) {
+    ctx.font = `${style} ${weight} ${samplePx}px ${family}`;
+    let maxPx = 0;
+    for (const line of lines) {
+      maxPx = Math.max(maxPx, ctx.measureText(line || ' ').width);
+    }
+    maxWPt = (maxPx / samplePx) * fontSizePt;
+  }
+  const textWPt = Math.max(1, maxWPt);
+  const textHPt = Math.max(fontSizePt, lines.length * lineHeightPt);
+  const scale = displayScale.value || 1;
+  // Stage maps 1 PDF pt → displayScale CSS px (same as pdf.js viewport). Do NOT use 96/72.
+  const fontPx = fontSizePt * scale;
   return {
-    w: Math.max(48, maxLen * fontPx * 0.55),
-    h: Math.max(28, lines.length * lineH),
-    fontPx
+    w: Math.max(8, textWPt * scale),
+    h: Math.max(8, textHPt * scale),
+    fontPx,
+    fontCss: family
   };
 }
 
 function imageMetrics() {
   const place = imagePlace();
   const w = stageW.value * (place.transform.wPct || 0.35);
-  return { w, h: Math.max(24, w * 0.75) };
+  const aspect = imageAspect.value > 0 ? imageAspect.value : 0.75;
+  return { w, h: Math.max(8, w * aspect) };
 }
 
 const textPrimary = computed(() => {
@@ -278,7 +337,7 @@ const textGhosts = computed(() => {
   const place = textPlace();
   const scale = displayScale.value || 1;
   return tileGhostsFromPrimary({
-    pattern: wm.text.pattern,
+    pattern: place.pattern,
     pageW: stageW.value,
     pageH: stageH.value,
     primaryLeft: p.left,
@@ -296,7 +355,7 @@ const imageGhosts = computed(() => {
   const place = imagePlace();
   const scale = displayScale.value || 1;
   return tileGhostsFromPrimary({
-    pattern: wm.image.pattern,
+    pattern: place.pattern,
     pageW: stageW.value,
     pageH: stageH.value,
     primaryLeft: p.left,
@@ -310,40 +369,40 @@ const imageGhosts = computed(() => {
 });
 
 const textVisualStyle = computed(() => {
-  const { fontPx } = textMetrics();
+  const { fontPx, fontCss } = textMetrics();
   const place = textPlace();
-  const align = wm.text.align || 'center';
+  const align = place.align || 'center';
   return {
-    color: wm.text.color,
-    opacity: wm.text.opacity,
+    color: place.color,
+    opacity: place.opacity,
     fontSize: `${fontPx}px`,
-    fontFamily: fontCssFamily(wm.text.fontFamily),
-    fontWeight: wm.text.bold ? '700' : '400',
-    fontStyle: wm.text.italic ? 'italic' : 'normal',
-    textDecoration: wm.text.underline ? 'underline' : 'none',
-    textAlign: align,
-    transform: `rotate(${place.transform.rotationDeg || 0}deg)`
+    fontFamily: fontCss,
+    fontWeight: place.bold ? '700' : '400',
+    fontStyle: place.italic ? 'italic' : 'normal',
+    textDecoration: place.underline ? 'underline' : 'none',
+    textAlign: align
   };
 });
 
 const imageVisualStyle = computed(() => {
   const place = imagePlace();
   return {
-    opacity: wm.image.opacity,
-    filter: wm.image.grayscale ? 'grayscale(1)' : 'none',
+    opacity: place.opacity,
+    filter: place.grayscale ? 'grayscale(1)' : 'none',
     width: '100%',
     height: '100%',
-    objectFit: 'contain',
-    transform: `rotate(${place.transform.rotationDeg || 0}deg)`
+    objectFit: 'contain'
   };
 });
 
-function boxPosStyle(pos) {
+function boxPosStyle(pos, rotationDeg = 0) {
+  const rot = Number(rotationDeg) || 0;
   return {
     left: `${pos.left}px`,
     top: `${pos.top}px`,
     width: `${pos.w}px`,
-    height: `${pos.h}px`
+    height: `${pos.h}px`,
+    transform: `rotate(${rot}deg)`
   };
 }
 
@@ -363,7 +422,11 @@ function resetBlank() {
   docImageUrl.value = null;
   pageCount.value = 0;
   page.value = 1;
-  pageSize.value = { w: 595.28, h: 841.89 };
+  const ori =
+    props.editOrientation === 'landscape' || props.editOrientation === 'portrait'
+      ? props.editOrientation
+      : 'portrait';
+  pageSize.value = blankPageSizeFor(ori);
   nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
 }
 
@@ -375,12 +438,15 @@ function onDocImageLoad(e) {
 }
 
 async function loadPdfFromBuffer(data) {
+  if (!data) throw new Error('empty PDF buffer');
   const loadingTask = pdfjs.getDocument({ data });
-  pdfDoc = await loadingTask.promise;
-  pageCount.value = pdfDoc.numPages;
+  const doc = await loadingTask.promise;
+  pdfDoc = doc;
+  pageCount.value = doc.numPages;
   page.value = 1;
   hasPdf.value = true;
   hasImage.value = false;
+  await nextTick();
   await nextTick();
   await renderPage();
 }
@@ -388,6 +454,8 @@ async function loadPdfFromBuffer(data) {
 async function loadPreview() {
   const gen = ++renderGen;
   await cleanupPdf();
+  if (gen !== renderGen) return;
+
   docImageUrl.value = null;
   hasImage.value = false;
   hasPdf.value = false;
@@ -398,66 +466,55 @@ async function loadPreview() {
     return;
   }
 
-  // 1) Client PDF cache (server preview or local PDF)
-  if (hasCachedPdf(f.id)) {
-    try {
-      const data = takePdfCopy(f.id);
+  try {
+    // 1) Client PDF cache (server preview or local PDF)
+    if (hasCachedPdf(f.id)) {
       if (gen !== renderGen) return;
-      await loadPdfFromBuffer(data);
-    } catch (err) {
-      console.error(err);
-      if (gen === renderGen) resetBlank();
+      await loadPdfFromBuffer(takePdfCopy(f.id));
+      return;
     }
-    return;
-  }
 
-  // 2) Cached / local image
-  if (f.previewKind === 'local-image' && f.file) {
-    if (gen !== renderGen) return;
-    docImageUrl.value = cacheLocalImage(f.id, f.file);
-    hasImage.value = true;
-    pageCount.value = 1;
-    page.value = 1;
-    return;
-  }
-  const cachedImg = getCachedImageUrl(f.id);
-  if (cachedImg) {
-    if (gen !== renderGen) return;
-    docImageUrl.value = cachedImg;
-    hasImage.value = true;
-    pageCount.value = 1;
-    page.value = 1;
-    return;
-  }
+    // 2) Cached / local image
+    if (f.previewKind === 'local-image' && f.file) {
+      if (gen !== renderGen) return;
+      docImageUrl.value = cacheLocalImage(f.id, f.file);
+      hasImage.value = true;
+      pageCount.value = 1;
+      page.value = 1;
+      return;
+    }
+    const cachedImg = getCachedImageUrl(f.id);
+    if (cachedImg) {
+      if (gen !== renderGen) return;
+      docImageUrl.value = cachedImg;
+      hasImage.value = true;
+      pageCount.value = 1;
+      page.value = 1;
+      return;
+    }
 
-  // 3) Local PDF — read once into cache
-  if (f.previewKind === 'local-pdf' && f.file) {
-    try {
+    // 3) Local PDF — read once into cache
+    if (f.previewKind === 'local-pdf' && f.file) {
       await cacheLocalPdf(f.id, f.file);
       if (gen !== renderGen) return;
       await loadPdfFromBuffer(takePdfCopy(f.id));
-    } catch (err) {
-      console.error(err);
-      if (gen === renderGen) resetBlank();
+      return;
     }
-    return;
-  }
 
-  // 4) Server quick PDF ready — fetch + cache
-  if (f.previewUrl && f.previewStatus === 'ready') {
-    try {
+    // 4) Server quick PDF ready
+    if (f.previewUrl && f.previewStatus === 'ready') {
       await cacheServerPreview(f.id, f.previewUrl);
       if (gen !== renderGen) return;
       await loadPdfFromBuffer(takePdfCopy(f.id));
-    } catch (err) {
-      console.error(err);
-      if (gen === renderGen) resetBlank();
+      return;
     }
-    return;
-  }
 
-  // Converting / unsupported / error — blank page, watermark still interactive
-  if (gen === renderGen) resetBlank();
+    // Converting / unsupported / error — blank page
+    if (gen === renderGen) resetBlank();
+  } catch (err) {
+    console.error(err);
+    if (gen === renderGen) resetBlank();
+  }
 }
 
 async function cancelRender() {
@@ -477,10 +534,16 @@ async function cancelRender() {
 }
 
 async function renderPage() {
-  if (!pdfDoc || !canvas.value) return;
+  if (!pdfDoc) return;
   const gen = renderGen;
   await cancelRender();
-  if (gen !== renderGen || !pdfDoc || !canvas.value) return;
+  if (gen !== renderGen || !pdfDoc) return;
+
+  // Ensure canvas ref after hasPdf v-show
+  if (!canvas.value) {
+    await nextTick();
+    if (gen !== renderGen || !pdfDoc || !canvas.value) return;
+  }
 
   const pdfPage = await pdfDoc.getPage(page.value);
   // Use page's inherent rotation only — do not add extra rotation (avoids upside-down first page).
@@ -497,6 +560,7 @@ async function renderPage() {
     rotation
   });
   const c = canvas.value;
+  if (!c) return;
   c.width = Math.floor(viewport.width);
   c.height = Math.floor(viewport.height);
   c.style.width = '';
@@ -525,8 +589,16 @@ async function cleanupPdf() {
 }
 
 watch(
-  () => [props.file?.id, props.file?.previewUrl, props.file?.previewStatus, props.file?.previewKind],
-  () => loadPreview(),
+  () => [
+    props.file?.id,
+    props.file?.previewUrl,
+    props.file?.previewStatus,
+    props.file?.previewKind,
+    props.file?.previewEpoch
+  ],
+  () => {
+    loadPreview();
+  },
   { immediate: true }
 );
 
@@ -548,6 +620,12 @@ onMounted(() => {
     });
     resizeObs.observe(wrap.value);
   }
+  // Re-measure text after DejaVu loads (avoids Segoe fallback metrics)
+  if (typeof document !== 'undefined' && document.fonts?.ready) {
+    document.fonts.ready.then(() => {
+      fontsReadyTick.value += 1;
+    });
+  }
 });
 
 watch(
@@ -555,6 +633,15 @@ watch(
   (f) => {
     if (imagePreviewUrl.value) URL.revokeObjectURL(imagePreviewUrl.value);
     imagePreviewUrl.value = f ? URL.createObjectURL(f) : null;
+    imageAspect.value = 0.75;
+    if (!f) return;
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalWidth > 0) {
+        imageAspect.value = img.naturalHeight / img.naturalWidth;
+      }
+    };
+    img.src = imagePreviewUrl.value;
   },
   { immediate: true }
 );
@@ -649,7 +736,13 @@ function onMove(e) {
     const angle = (Math.atan2(e.clientY - drag.cy, e.clientX - drag.cx) * 180) / Math.PI;
     let next = drag.origRot + (angle - drag.startAngle);
     next = ((next + 180) % 360 + 360) % 360 - 180;
-    wm[drag.kind][ori].transform.rotationDeg = Math.round(next);
+    if (e.shiftKey) {
+      next = Math.round(next / 15) * 15;
+      if (next === -180) next = 180;
+    } else {
+      next = Math.round(next);
+    }
+    wm[drag.kind][ori].transform.rotationDeg = next;
     return;
   }
 

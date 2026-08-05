@@ -5,6 +5,7 @@ import { tilePositionsFromPrimary } from '../utils/tiling.js';
 import { resolveWatermarkFont } from '../utils/fonts.js';
 import { getPageVisualMetrics, withVisualCoords, visualBoxToDraw } from '../utils/pageCoords.js';
 import { getTextPlacement, getImagePlacement } from '../utils/watermarkPlacement.js';
+import { renderTextWatermarkPng, measureTextBlockPdf } from '../utils/textWatermarkImage.js';
 
 function hexToRgb(hex = '#000000') {
   const h = hex.replace('#', '');
@@ -26,12 +27,7 @@ function lineWidth(font, line, fontSize) {
 }
 
 function measureTextBlock(font, lines, fontSize, lineHeight) {
-  let maxW = 0;
-  for (const line of lines) {
-    maxW = Math.max(maxW, lineWidth(font, line, fontSize));
-  }
-  const h = Math.max(fontSize, lines.length * lineHeight);
-  return { w: Math.max(1, maxW), h };
+  return measureTextBlockPdf(font, lines, fontSize, lineHeight);
 }
 
 function drawAlignedLine(page, {
@@ -148,6 +144,31 @@ function visualTilePositions({
   return [{ left: primaryLeft, top: primaryTop, w: boxW, h: boxH }, ...ghosts];
 }
 
+function textGraphicCacheKey(place) {
+  return [
+    place.fontSizePt,
+    place.fontFamily,
+    place.bold ? 1 : 0,
+    place.italic ? 1 : 0,
+    place.underline ? 1 : 0,
+    place.color,
+    place.align,
+    place.pattern
+  ].join('|');
+}
+
+async function embedImageBuffer(pdf, buf, preferJpeg = false) {
+  if (preferJpeg) {
+    try {
+      return await pdf.embedJpg(buf);
+    } catch {
+      /* fall through to png */
+    }
+  }
+  const png = await sharp(buf).png().toBuffer();
+  return pdf.embedPng(png);
+}
+
 /**
  * Apply text and/or image watermark layers onto a PDF file.
  */
@@ -159,133 +180,201 @@ export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
   const textLayer = watermark?.text;
   const imageLayer = watermark?.image;
 
-  let embeddedImage = null;
+  let embeddedColor = null;
+  let embeddedGray = null;
   if (imageLayer?.enabled && imagePath) {
-    let buf = await fs.readFile(imagePath);
-    if (imageLayer.grayscale) {
-      buf = await sharp(buf).grayscale().png().toBuffer();
-      embeddedImage = await pdf.embedPng(buf);
-    } else {
-      const meta = await sharp(buf).metadata();
-      if (meta.format === 'jpeg' || meta.format === 'jpg') {
-        embeddedImage = await pdf.embedJpg(buf);
-      } else {
-        const png = await sharp(buf).png().toBuffer();
-        embeddedImage = await pdf.embedPng(png);
-      }
-    }
+    const buf = await fs.readFile(imagePath);
+    const meta = await sharp(buf).metadata();
+    const isJpeg = meta.format === 'jpeg' || meta.format === 'jpg';
+    embeddedColor = await embedImageBuffer(pdf, buf, isJpeg);
+    const grayBuf = await sharp(buf).grayscale().png().toBuffer();
+    embeddedGray = await pdf.embedPng(grayBuf);
   }
 
-  let font = null;
   const textValue = textLayer?.enabled ? String(textLayer.value ?? '') : '';
-  if (textLayer?.enabled && textValue) {
-    font = await resolveWatermarkFont(pdf, {
-      fontFamily: textLayer.fontFamily,
-      bold: textLayer.bold,
-      italic: textLayer.italic,
+  const asGraphic = textLayer?.asGraphic !== false;
+
+  const fontCache = new Map();
+  async function getFont(place) {
+    const key = `${place.fontFamily}|${place.bold ? 1 : 0}|${place.italic ? 1 : 0}`;
+    if (fontCache.has(key)) return fontCache.get(key);
+    const font = await resolveWatermarkFont(pdf, {
+      fontFamily: place.fontFamily,
+      bold: place.bold,
+      italic: place.italic,
       text: textValue
     });
+    fontCache.set(key, font);
+    return font;
+  }
+
+  const textGraphicCache = new Map();
+  async function getTextGraphic(place) {
+    const key = textGraphicCacheKey(place);
+    if (textGraphicCache.has(key)) return textGraphicCache.get(key);
+    const font = await getFont(place);
+    const rendered = await renderTextWatermarkPng({
+      text: textValue,
+      fontSizePt: place.fontSizePt,
+      fontFamily: place.fontFamily,
+      bold: place.bold,
+      italic: place.italic,
+      underline: place.underline,
+      color: place.color || '#000000',
+      align: place.align || 'center',
+      measureFont: font
+    });
+    const embedded = await pdf.embedPng(rendered.png);
+    const entry = { embedded, w: rendered.widthPt, h: rendered.heightPt, font };
+    textGraphicCache.set(key, entry);
+    return entry;
   }
 
   for (const page of pages) {
     const metrics = getPageVisualMetrics(page);
     const { visualW, visualH, orientation } = metrics;
 
+    let textGraphic = null;
+    let textFont = null;
+    let textPlace = null;
+    if (textLayer?.enabled && textValue) {
+      textPlace = getTextPlacement(textLayer, orientation);
+      textFont = await getFont(textPlace);
+      if (asGraphic) {
+        textGraphic = await getTextGraphic(textPlace);
+      }
+    }
+
     withVisualCoords(page, metrics, () => {
-      if (imageLayer?.enabled && embeddedImage) {
+      if (imageLayer?.enabled && (embeddedColor || embeddedGray)) {
         const place = getImagePlacement(imageLayer, orientation);
-        const t = place.transform || {};
-        const wPct = Math.min(Math.max(Number(t.wPct) || 0.35, 0.05), 1);
-        const w = visualW * wPct;
-        const aspect = embeddedImage.height / embeddedImage.width || 0.75;
-        const h = w * aspect;
-        const xPct = t.xPct != null ? Number(t.xPct) : 0.5;
-        const yPct = t.yPct != null ? Number(t.yPct) : 0.5;
-        const rotation = Number(t.rotationDeg) || 0;
-        const opacity = Math.min(Math.max(Number(imageLayer.opacity) ?? 0.3, 0), 1);
-        const pattern = imageLayer.pattern || 'single';
-        const primaryLeft = visualW * xPct - w / 2;
-        const primaryTop = visualH * yPct - h / 2;
+        const embeddedImage = place.grayscale ? embeddedGray : embeddedColor;
+        if (embeddedImage) {
+          const t = place.transform || {};
+          const wPct = Math.min(Math.max(Number(t.wPct) || 0.35, 0.05), 1);
+          const w = visualW * wPct;
+          const aspect = embeddedImage.height / embeddedImage.width || 0.75;
+          const h = w * aspect;
+          const xPct = t.xPct != null ? Number(t.xPct) : 0.5;
+          const yPct = t.yPct != null ? Number(t.yPct) : 0.5;
+          const rotation = Number(t.rotationDeg) || 0;
+          const opacity = Math.min(Math.max(Number(place.opacity) ?? 0.3, 0), 1);
+          const pattern = place.pattern || 'single';
+          const primaryLeft = visualW * xPct - w / 2;
+          const primaryTop = visualH * yPct - h / 2;
 
-        const positions = visualTilePositions({
-          pattern,
-          visualW,
-          visualH,
-          primaryLeft,
-          primaryTop,
-          boxW: w,
-          boxH: h,
-          rotationDeg: rotation,
-          spacingX: place.spacingX,
-          spacingY: place.spacingY
-        });
-
-        for (const pos of positions) {
-          const draw = visualBoxToDraw(pos.left, pos.top, w, h, visualH, rotation);
-          page.drawImage(embeddedImage, {
-            x: draw.x,
-            y: draw.y,
-            width: w,
-            height: h,
-            opacity,
-            rotate: degrees(draw.pdfRotDeg)
+          const positions = visualTilePositions({
+            pattern,
+            visualW,
+            visualH,
+            primaryLeft,
+            primaryTop,
+            boxW: w,
+            boxH: h,
+            rotationDeg: rotation,
+            spacingX: place.spacingX,
+            spacingY: place.spacingY
           });
+
+          for (const pos of positions) {
+            const draw = visualBoxToDraw(pos.left, pos.top, w, h, visualH, rotation);
+            page.drawImage(embeddedImage, {
+              x: draw.x,
+              y: draw.y,
+              width: w,
+              height: h,
+              opacity,
+              rotate: degrees(draw.pdfRotDeg)
+            });
+          }
         }
       }
 
-      if (textLayer?.enabled && textValue && font) {
-        const place = getTextPlacement(textLayer, orientation);
+      if (textLayer?.enabled && textValue && textPlace && textFont) {
+        const place = textPlace;
         const t = place.transform || {};
         const fontSize = Number(place.fontSizePt) || 48;
         const lineHeight = fontSize * 1.25;
         const lines = splitLines(textValue);
-        const { w: textW, h: textH } = measureTextBlock(font, lines, fontSize, lineHeight);
         const xPct = t.xPct != null ? Number(t.xPct) : 0.5;
         const yPct = t.yPct != null ? Number(t.yPct) : 0.5;
         const rotation = Number(t.rotationDeg) || -30;
-        const opacity = Math.min(Math.max(Number(textLayer.opacity) ?? 0.25, 0), 1);
-        const color = hexToRgb(textLayer.color || '#000000');
-        const pattern = textLayer.pattern || 'single';
-        const underline = !!textLayer.underline;
-        const align = textLayer.align || 'center';
-        const primaryLeft = visualW * xPct - textW / 2;
-        const primaryTop = visualH * yPct - textH / 2;
-        const fill = rgb(color.r, color.g, color.b);
+        const opacity = Math.min(Math.max(Number(place.opacity) ?? 0.25, 0), 1);
+        const pattern = place.pattern || 'single';
 
-        const positions = visualTilePositions({
-          pattern,
-          visualW,
-          visualH,
-          primaryLeft,
-          primaryTop,
-          boxW: textW,
-          boxH: textH,
-          rotationDeg: rotation,
-          spacingX: place.spacingX,
-          spacingY: place.spacingY
-        });
+        if (asGraphic && textGraphic) {
+          const w = textGraphic.w;
+          const h = textGraphic.h;
+          const primaryLeft = visualW * xPct - w / 2;
+          const primaryTop = visualH * yPct - h / 2;
+          const positions = visualTilePositions({
+            pattern,
+            visualW,
+            visualH,
+            primaryLeft,
+            primaryTop,
+            boxW: w,
+            boxH: h,
+            rotationDeg: rotation,
+            spacingX: place.spacingX,
+            spacingY: place.spacingY
+          });
 
-        for (const pos of positions) {
-          const draw = visualBoxToDraw(pos.left, pos.top, textW, textH, visualH, rotation);
-          const rot = degrees(draw.pdfRotDeg);
-
-          for (let li = 0; li < lines.length; li++) {
-            const baselineY =
-              draw.y + textH - (li + 1) * lineHeight + (lineHeight - fontSize) * 0.5;
-            drawAlignedLine(page, {
-              line: lines[li],
-              font,
-              fontSize,
-              boxX: draw.x,
-              boxW: textW,
-              baselineY,
-              align,
-              isLastLine: li === lines.length - 1,
-              color: fill,
+          for (const pos of positions) {
+            const draw = visualBoxToDraw(pos.left, pos.top, w, h, visualH, rotation);
+            page.drawImage(textGraphic.embedded, {
+              x: draw.x,
+              y: draw.y,
+              width: w,
+              height: h,
               opacity,
-              rot,
-              underline
+              rotate: degrees(draw.pdfRotDeg)
             });
+          }
+        } else {
+          const { w: textW, h: textH } = measureTextBlock(textFont, lines, fontSize, lineHeight);
+          const color = hexToRgb(place.color || '#000000');
+          const underline = !!place.underline;
+          const align = place.align || 'center';
+          const primaryLeft = visualW * xPct - textW / 2;
+          const primaryTop = visualH * yPct - textH / 2;
+          const fill = rgb(color.r, color.g, color.b);
+
+          const positions = visualTilePositions({
+            pattern,
+            visualW,
+            visualH,
+            primaryLeft,
+            primaryTop,
+            boxW: textW,
+            boxH: textH,
+            rotationDeg: rotation,
+            spacingX: place.spacingX,
+            spacingY: place.spacingY
+          });
+
+          for (const pos of positions) {
+            const draw = visualBoxToDraw(pos.left, pos.top, textW, textH, visualH, rotation);
+            const rot = degrees(draw.pdfRotDeg);
+
+            for (let li = 0; li < lines.length; li++) {
+              const baselineY =
+                draw.y + textH - (li + 1) * lineHeight + (lineHeight - fontSize) * 0.5;
+              drawAlignedLine(page, {
+                line: lines[li],
+                font: textFont,
+                fontSize,
+                boxX: draw.x,
+                boxW: textW,
+                baselineY,
+                align,
+                isLastLine: li === lines.length - 1,
+                color: fill,
+                opacity,
+                rot,
+                underline
+              });
+            }
           }
         }
       }
