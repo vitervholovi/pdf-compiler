@@ -14,7 +14,7 @@
 
       <div class="stage" :style="stageStyle">
         <div class="page-frame" aria-hidden="true">
-          <span v-if="!hasPdf && !hasImage" class="page-label">A4</span>
+          <span class="page-label">A4</span>
         </div>
         <canvas ref="canvas" class="page-canvas" v-show="hasPdf" />
         <img
@@ -137,7 +137,7 @@ const emit = defineEmits(['update:watermark', 'update:pageOrientation', 'update:
 const A4_PORTRAIT = { w: 595.28, h: 841.89 };
 const A4_LANDSCAPE = { w: 841.89, h: 595.28 };
 
-function blankPageSizeFor(ori) {
+function a4PageSizeFor(ori) {
   return ori === 'landscape' ? { ...A4_LANDSCAPE } : { ...A4_PORTRAIT };
 }
 
@@ -180,13 +180,13 @@ watch(
   { immediate: true }
 );
 
-/** Blank stage follows WM orientation switch (no document loaded). */
+/** Blank stage follows orientation switch (no document loaded). */
 watch(
   () => props.editOrientation,
   (ori) => {
     if (hasPdf.value || hasImage.value) return;
     if (ori !== 'landscape' && ori !== 'portrait') return;
-    pageSize.value = blankPageSizeFor(ori);
+    pageSize.value = a4PageSizeFor(ori);
     nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
   }
 );
@@ -426,13 +426,15 @@ function resetBlank() {
     props.editOrientation === 'landscape' || props.editOrientation === 'portrait'
       ? props.editOrientation
       : 'portrait';
-  pageSize.value = blankPageSizeFor(ori);
+  pageSize.value = a4PageSizeFor(ori);
   nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
 }
 
 function onDocImageLoad(e) {
   const img = e.target;
-  pageSize.value = { w: img.naturalWidth || 595, h: img.naturalHeight || 842 };
+  const nw = img.naturalWidth || 595;
+  const nh = img.naturalHeight || 842;
+  pageSize.value = a4PageSizeFor(pageOrientation(nw, nh));
   pageCount.value = 1;
   nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
 }
@@ -549,12 +551,14 @@ async function renderPage() {
   // Use page's inherent rotation only — do not add extra rotation (avoids upside-down first page).
   const rotation = pdfPage.rotate || 0;
   const unscaled = pdfPage.getViewport({ scale: 1, rotation });
-  pageSize.value = { w: unscaled.width, h: unscaled.height };
+  // Stage is always A4; orientation follows the real page.
+  pageSize.value = a4PageSizeFor(pageOrientation(unscaled.width, unscaled.height));
   await nextTick();
   if (gen !== renderGen) return;
-  fitScale(unscaled.width, unscaled.height);
+  fitScale(pageSize.value.w, pageSize.value.h);
 
   const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+  // Render native page; CSS stretches canvas into the A4 stage.
   const viewport = pdfPage.getViewport({
     scale: displayScale.value * outputScale,
     rotation

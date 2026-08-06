@@ -79,7 +79,7 @@
       <div class="convert-row">
         <div class="wm-io">
           <div class="ori-switch" role="group" aria-label="Орієнтація налаштувань">
-            <span class="ori-label">Позиція WM:</span>
+            <span class="ori-label">Орієнтація:</span>
             <button
               type="button"
               class="btn"

@@ -54,10 +54,10 @@ Preview: CSS `rotate` on the whole `.wm` box (border + handles); Shift+drag snap
 Preview metrics: canvas `measureText` + Unicode→DejaVu CSS; stage uses 1 PDF pt = displayScale CSS px (no 96/72); image natural aspect.
 xlsx preprocess: trim to union(Print_Area, used range) (ignore XFD junk; cell trim must not treat `/>` as body open). Calc export: xlsx→ODS → patch `scale-to-X=1` landscape A4 → PDF (no SinglePageSheets). Vertical pagination via LO; strip empty pages.
 Client preview: cache PDF **before** status=`ready`; replace file object; `:key` remounts DocumentPreview when ready.
-Blank preview follows WM orientation (A4 landscape/portrait). Opposite ori button disabled when a real page is shown.
+All preview stages use A4 (portrait/landscape from page orientation); content fills the A4 frame. Opposite ori button disabled when a real page is shown.
 Spacing sliders −500…500; number input may exceed. Last settings (+ image) persist in `localStorage` (`pdf-compiler:watermark-settings`); JSON import overwrites storage.
 File thumbs: `title` tip on hover when `previewStatus === 'error'` (shows `previewError`).
-UI: «Позиція WM» = Авто / Книжкова / Альбомна; save/load icons in header top-right.
+UI: «Орієнтація» = Авто / Книжкова / Альбомна; save/load icons in header top-right.
 
 ## Tiling patterns
 
