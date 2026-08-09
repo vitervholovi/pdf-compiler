@@ -1,3 +1,23 @@
+# ── Build client (Vite) ─────────────────────────────────────────────────────
+FROM node:20-bookworm AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY client/package.json ./client/
+COPY server/package.json ./server/
+
+RUN npm ci --workspace=client --workspace=server --include-workspace-root
+
+COPY client ./client
+COPY server ./server
+
+ARG VITE_BASE=/temecriack/pdf-compiler/
+ENV VITE_BASE=$VITE_BASE
+
+RUN npm run build -w client
+
+# ── Runtime (LibreOffice + Express) ─────────────────────────────────────────
 FROM node:20-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,20 +37,18 @@ COPY package.json package-lock.json ./
 COPY client/package.json ./client/
 COPY server/package.json ./server/
 
-RUN npm install --workspace=client --workspace=server --include-workspace-root
+# Production deps only (no Vite / concurrently). Workspaces still need both
+# package.json files present for npm to resolve the lockfile.
+RUN npm ci --omit=dev --workspace=server --include-workspace-root \
+    && npm prune --omit=dev
 
-COPY client ./client
-COPY server ./server
-
-ARG VITE_BASE=/pdf-compiler/
-ENV VITE_BASE=$VITE_BASE
-
-RUN npm run build -w client
+COPY --from=builder /app/server ./server
+COPY --from=builder /app/client/dist ./client/dist
 
 ENV NODE_ENV=production
 ENV PORT=3080
 ENV CLIENT_DIST=/app/client/dist
-ENV PUBLIC_BASE=/pdf-compiler
+ENV PUBLIC_BASE=/temecriack/pdf-compiler
 
 EXPOSE 3080
 

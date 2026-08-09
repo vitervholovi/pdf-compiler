@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { requireAccessToken } from './middleware/authLite.js';
 import { jobsRouter } from './routes/jobs.js';
 import { previewRouter } from './routes/preview.js';
 import { createPreviewStore } from './services/previews.js';
@@ -26,7 +27,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 3080);
 const CLIENT_DIST = process.env.CLIENT_DIST || path.resolve(rootDir, '../client/dist');
 
-// Accept both /api/... and /pdf-compiler/api/... (gateway may or may not strip prefix).
+// Accept both /api/... and /temecriack/pdf-compiler/api/... (gateway may or may not strip).
 if (PUBLIC_BASE) {
   app.use((req, _res, next) => {
     if (req.url === PUBLIC_BASE || req.url.startsWith(`${PUBLIC_BASE}/`)) {
@@ -39,9 +40,13 @@ if (PUBLIC_BASE) {
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 
+// Docker / autoheal healthcheck — must stay unauthenticated.
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
+
+// All other /api/* require access JWT (Bearer or SSO cookie).
+app.use('/api', requireAccessToken);
 
 app.use('/api/preview', previewRouter({ previewsDir, previewStore }));
 app.use('/api/jobs', jobsRouter({ uploadsDir, resultsDir, previewStore }));

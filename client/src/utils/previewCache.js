@@ -4,6 +4,8 @@
  * server temp previews after a job does not wipe the UI preview.
  */
 
+import { authFetch } from './api.js';
+
 const pdfBuffers = new Map();
 const imageUrls = new Map();
 const inflight = new Map();
@@ -64,7 +66,7 @@ export async function cacheServerPreview(id, url) {
   if (inflight.has(id)) return inflight.get(id);
 
   const task = (async () => {
-    const res = await fetch(url);
+    const res = await authFetch(url);
     if (!res.ok) throw new Error(`preview fetch failed (${res.status})`);
     const buf = await res.arrayBuffer();
     pdfBuffers.set(id, buf);

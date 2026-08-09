@@ -161,7 +161,7 @@ import {
   saveWatermarkToStorage,
   loadWatermarkFromStorage
 } from './utils/watermarkStorage.js';
-import { apiUrl } from './utils/api.js';
+import { apiFetch, apiUrl } from './utils/api.js';
 
 const files = ref([]);
 const selectedId = ref(null);
@@ -292,7 +292,7 @@ async function requestQuickPreview(entry) {
   const fd = new FormData();
   fd.append('file', entry.file, entry.file.name);
   try {
-    const res = await fetch(apiUrl('api/preview'), { method: 'POST', body: fd });
+    const res = await apiFetch('api/preview', { method: 'POST', body: fd });
     const raw = await res.text();
     let data = {};
     try {
@@ -377,7 +377,7 @@ async function onRemove(i) {
   if (removed) {
     releasePreviewCache(removed.id);
     if (removed.previewId) {
-      fetch(apiUrl(`api/preview/${removed.previewId}`), { method: 'DELETE' }).catch(() => {});
+      apiFetch(`api/preview/${removed.previewId}`, { method: 'DELETE' }).catch(() => {});
     }
   }
   if (removed && removed.id === selectedId.value) {
@@ -415,12 +415,13 @@ async function startJob() {
   }
 
   try {
-    const res = await fetch(apiUrl('api/jobs'), { method: 'POST', body: fd });
+    const res = await apiFetch('api/jobs', { method: 'POST', body: fd });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || 'Помилка запуску');
     }
     const { jobId } = await res.json();
+    // EventSource cannot set Authorization; authLite accepts the SSO cookie (Path=/).
     es = new EventSource(apiUrl(`api/jobs/${jobId}/events`));
     es.onmessage = (msg) => {
       const data = JSON.parse(msg.data);

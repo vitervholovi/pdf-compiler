@@ -4,7 +4,7 @@ services:
     ports:
       - "3080:3080"
     environment:
-      - PUBLIC_BASE=/pdf-compiler
+      - PUBLIC_BASE=/temecriack/pdf-compiler
     volumes:
       - pdf_data:/app/server/data
     restart: unless-stopped

@@ -2,37 +2,37 @@
 
 Веб-інтерфейс для завантаження документів, накладання watermark (текст + зображення) і конвертації в PDF.
 
-У монорепо TG Service FE публічний шлях: **`/pdf-compiler/`** (через nginx :4000).
+У монорепо TG Service FE публічний шлях: **`/temecriack/pdf-compiler/`** (через nginx :4000). Доступ лише після admin SSO (`/temecriack/auth/`); після логіну без явного `returnTo` відкривається хаб **`/temecriack/auth/menu/`**.
 
 ## Швидкий старт (Docker, у монорепо)
 
 ```bash
 # з кореня TG Service FE
-docker compose up --build pdfcompiler nginx
+docker compose up --build pdfcompiler nginx auth
 ```
 
-Відкрийте: **http://localhost:4000/pdf-compiler/**
+Відкрийте: **http://localhost:4000/temecriack/pdf-compiler/** (без сесії → login).
 
 Standalone (окремий compose у цій теці):
 
 ```bash
 docker compose up --build
-# http://localhost:3080/pdf-compiler/
+# http://localhost:3080/temecriack/pdf-compiler/
 ```
 
 Для root-шляху без префікса: `docker build --build-arg VITE_BASE=/ .` і `PUBLIC_BASE=`.
 
 ## Локальна розробка
 
-Потрібні: Node 20+, LibreOffice, djvulibre (опційно для DjVu).
+Потрібні: Node 20+, LibreOffice, djvulibre (опційно для DjVu). Для повного SSO потрібен доступний auth (`/temecriack/auth/api`) і cookie `temecriack-admin-token`.
 
 ```bash
 npm install
 npm run dev
 ```
 
-- UI: http://localhost:5173/pdf-compiler/
-- API: http://localhost:3080  
+- UI: http://localhost:5173/temecriack/pdf-compiler/
+- API: http://localhost:3080 (`/api/health` без JWT; інші `/api/*` — з токеном)
 
 ## Можливості
 

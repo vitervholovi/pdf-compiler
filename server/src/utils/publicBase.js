@@ -1,7 +1,11 @@
-/** Public URL prefix when served behind a gateway (e.g. `/pdf-compiler`). Empty = root. */
+/**
+ * Public URL prefix when served behind the monorepo gateway
+ * (e.g. `/temecriack/pdf-compiler`). Empty string = app at site root.
+ * Trailing slashes are stripped so strip/prefix logic stays consistent.
+ */
 export function getPublicBase() {
   const raw = process.env.PUBLIC_BASE;
-  if (raw === undefined || raw === null) return '/pdf-compiler';
+  if (raw === undefined || raw === null) return '/temecriack/pdf-compiler';
   if (!raw || raw === '/') return '';
   return String(raw).replace(/\/$/, '');
 }
