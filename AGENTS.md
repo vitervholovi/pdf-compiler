@@ -22,9 +22,10 @@
 ## Admin SSO
 
 - Session SDK: `@temecriack/session` → `client/src/vendor/temecriack-session` (канон: monorepo `auth/src/session`; sync через `scripts/sync-admin-session.sh`).
-- Boot: `client/src/main.js` викликає `requireSession({ skewSec: 60 })` перед `mount` — без access JWT UI не монтується.
+- Boot: `client/src/main.js` викликає `requireSession({ skewSec: 60 })` перед `mount` — без access JWT UI не монтується. **Не** викликати `startSessionClock`.
+- Access: `ensureAccessToken()` → same-origin `GET /temecriack/auth/api/session/access` (auth Node брокер). Браузер **ніколи** не робить `POST /admin/auth/refresh`.
 - API: `server/src/middleware/authLite.js` вимагає Bearer або cookie `temecriack-admin-token` для `/api/*` **окрім** `/api/health` (Docker healthcheck).
-- Клієнтські `/api` запити — `apiFetch` / `authFetch` (refresh on 401). SSE (`EventSource`) покладається на SSO cookie (немає Authorization header).
+- Клієнтські `/api` запити — `apiFetch` / `authFetch` (спочатку `ensureAccessToken`; на 401 / expired-JWT 403 — force broker GET + один retry). SSE (`EventSource`) покладається на SSO cookie (немає Authorization header); брокер оновлює cookie `Path=/`, тож job SSE після >15 хв лишається валідним.
 - Не додавати `AUTH_JWT_SECRET` / JWKS у deploy цього модуля.
 
 ## Ключові потоки

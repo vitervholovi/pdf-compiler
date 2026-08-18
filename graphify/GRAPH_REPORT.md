@@ -58,6 +58,7 @@ All preview stages use A4 (portrait/landscape from page orientation); content fi
 Spacing sliders −500…500; number input may exceed. Last settings (+ image) persist in `localStorage` (`pdf-compiler:watermark-settings`); JSON import overwrites storage.
 File thumbs: `title` tip on hover when `previewStatus === 'error'` (shows `previewError`).
 UI: «Орієнтація» = Авто / Книжкова / Альбомна; save/load icons in header top-right.
+Header hub nav (`client/src/utils/appNav.js`): PDF Compiler is pinned first; remaining items stay Links → Chats → Stats.
 
 ## Tiling patterns
 

@@ -5,8 +5,8 @@
     "semantic_hash": ""
   },
   "client/src/App.vue": {
-    "mtime": 1787068359.7812011,
-    "ast_hash": "ac0164644ba0fb8970afd84866ea31b2",
+    "mtime": 1786265844.3072152,
+    "ast_hash": "460348a7d1a01b66114c9461b9e23d88",
     "semantic_hash": ""
   },
   "client/src/components/DocumentPreview.vue": {
@@ -155,8 +155,8 @@
     "semantic_hash": ""
   },
   "AGENTS.md": {
-    "mtime": 1786434881.9440677,
-    "ast_hash": "2dda7e4f42ea3945b1fb5bb6b300e99b",
+    "mtime": 1786265844.2853723,
+    "ast_hash": "4c2ac330b18cef9607508459ef1ff815",
     "semantic_hash": ""
   },
   "README.md": {
@@ -175,8 +175,8 @@
     "semantic_hash": ""
   },
   "graphify/GRAPH_REPORT.md": {
-    "mtime": 1787068340.011704,
-    "ast_hash": "ddad3d79bcd0ed84fc397a545903d0d9",
+    "mtime": 1786028005.0343273,
+    "ast_hash": "34d9f2e14576c669356610e0a78b6e61",
     "semantic_hash": ""
   },
   "client/src/components/SpacingControl.vue": {
@@ -347,11 +347,6 @@
   "client/public/web-app-manifest-512x512.png": {
     "mtime": 1785932781.7243204,
     "ast_hash": "27d3741c15f1ac33471ff1f4e49ca2df",
-    "semantic_hash": ""
-  },
-  "client/src/utils/appNav.js": {
-    "mtime": 1787068337.7208822,
-    "ast_hash": "0c06dd3c937d7f2ddc03be7b8870776b",
     "semantic_hash": ""
   }
 }

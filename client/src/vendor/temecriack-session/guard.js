@@ -1,4 +1,10 @@
-import { refresh } from './api.js'
+/**
+ * Boot session gate for chats / links / pdf-compiler.
+ *
+ * Why: no access cookie → login with zero broker probes (reuse-detection).
+ * Near-exp access → `ensureAccessToken` (GET broker), never POST refresh.
+ */
+import { ensureAccessToken } from './api.js'
 import { getTokenExp, isTokenExpired, isTokenExpiringSoon } from './jwt.js'
 import { redirectToLogin } from './redirect.js'
 import { getAccessToken } from './token.js'
@@ -6,7 +12,7 @@ import { getAccessToken } from './token.js'
 /**
  * Boot guard for chats/links.
  * - No access → login, no refresh probe.
- * - Access past/near exp → refresh; fail → login (no soft-mount).
+ * - Access past/near exp → broker GET; fail → login (no soft-mount).
  * - Opaque token (no exp) → trust until API 401 (no proactive refresh spam).
  * - localDev → trust stored token (HMR).
  *
@@ -29,7 +35,7 @@ export async function requireSession({ localDev = false, skewSec = 60 } = {}) {
   }
 
   try {
-    await refresh()
+    await ensureAccessToken()
     return true
   } catch {
     redirectToLogin({ clear: true, reason: 'boot_refresh_fail' })

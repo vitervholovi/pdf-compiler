@@ -3,13 +3,20 @@
  * Canonical copy: auth/src/session — synced into chats/links vendor trees
  * via `scripts/sync-admin-session.sh` (do not edit vendors by hand).
  *
+ * Access rotation: {@link ensureAccessToken} → GET `/temecriack/auth/api/session/access`.
+ * Do not POST `/admin/auth/refresh` from the browser.
+ *
  * Post-login `returnTo`: {@link DEFAULT_RETURN_TO} (`/temecriack/auth/menu/`)
  * unless query/referrer is an allowlisted chats|links|pdf-compiler|auth/menu path.
  */
 
 export {
+  ACCESS_SKEW_SEC,
   AUTH_API_PROXY,
+  SESSION_ACCESS_PATH,
   configureSession,
+  ensureAccessToken,
+  isAccessUsable,
   login,
   logout,
   notifyAuthFailure,

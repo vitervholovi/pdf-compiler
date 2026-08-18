@@ -23,5 +23,6 @@
   "21": "commitWm",
   "22": "README.md",
   "23": "vite.config.js",
-  "24": "TextWatermarkSettings.vue"
+  "24": "TextWatermarkSettings.vue",
+  "25": "textMetrics"
 }

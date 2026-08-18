@@ -1,8 +1,24 @@
 <template>
   <div class="app-shell">
     <header class="top">
-      <div class="titles">
-        <h1>PDF Compiler</h1>
+      <div class="header-left">
+        <a href="/temecriack/auth/menu/" class="brand-link">
+          <h1><span class="brand-mark">🦆</span> TeMeCriack</h1>
+        </a>
+        <nav class="app-nav" aria-label="Сервіси TeMeCriack">
+          <a
+            v-for="item in navItems"
+            :key="item.key"
+            :href="item.href"
+            class="app-nav__link"
+            :class="{ 'app-nav__link--active': item.active }"
+            :aria-current="item.active ? 'page' : undefined"
+            rel="noopener"
+          >
+            <span aria-hidden="true" v-html="item.icon" />
+            <span>{{ item.label }}</span>
+          </a>
+        </nav>
         <p class="subtitle">Документи, watermark і конвертація в PDF</p>
       </div>
       <div class="top-actions">
@@ -162,6 +178,14 @@ import {
   loadWatermarkFromStorage
 } from './utils/watermarkStorage.js';
 import { apiFetch, apiUrl } from './utils/api.js';
+import { buildAppNavItems } from './utils/appNav.js';
+
+/** Cross-app nav — PDF Compiler first; rest keep Links → Chats → Stats. */
+const navItems = buildAppNavItems(
+  typeof window !== 'undefined' && window.location.pathname && window.location.pathname !== '/'
+    ? window.location.pathname
+    : '/temecriack/pdf-compiler/',
+);
 
 const files = ref([]);
 const selectedId = ref(null);

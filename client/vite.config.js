@@ -27,6 +27,13 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // SSO / session broker: same-origin `/temecriack/auth/api` → auth Node.
+      // Local: run `npm start` in auth/ (:3010). Do not target AUTH_ADMIN_URL.
+      '/temecriack/auth/api': {
+        target: process.env.AUTH_NODE_URL || 'http://127.0.0.1:3010',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/temecriack\/auth(?=\/|$)/, '') || '/',
+      },
       // Gateway may keep the public prefix on API paths during local Vite dev.
       [`^${basePrefix}/api`]: {
         target: 'http://localhost:3080',

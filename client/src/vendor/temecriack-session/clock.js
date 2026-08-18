@@ -1,4 +1,12 @@
-import { refresh } from './api.js'
+/**
+ * Deprecated exp-based session clock.
+ *
+ * Why this file still exists: child apps re-export `startSessionClock` until
+ * links/chats drop their timers. Auth SPA must not start it. Refresh goes
+ * through {@link ensureAccessToken} (broker GET), never POST `/admin/auth/refresh`.
+ * Clock never redirects — API/guard own logout.
+ */
+import { ensureAccessToken } from './api.js'
 import { isTokenExpired, msUntilRefresh } from './jwt.js'
 import { getAccessToken, setTokenChangeHandler } from './token.js'
 
@@ -38,7 +46,7 @@ async function runRefresh({ force = false } = {}) {
   }
   lastAttemptAt = now
   try {
-    await refresh()
+    await ensureAccessToken()
     consecutiveFailures = 0
     pausedAfterFailures = false
     scheduleNext()
@@ -109,10 +117,11 @@ function onVisibility() {
 }
 
 /**
- * Exp-based session clock: refresh near JWT expiry; re-check on tab visible.
- * After limited backoff failures the clock pauses (no spin); visibility retries
- * with force when access is due or expired. Does not redirect to login —
- * API/guard own logout.
+ * Exp-based session clock: `ensureAccessToken` near JWT expiry; re-check on
+ * tab visible. Deprecated — do not start from auth SPA; child apps remove
+ * this in later broker stages. After limited backoff failures the clock
+ * pauses (no spin); visibility retries when access is due or expired.
+ * Does not redirect to login — API/guard own logout.
  * @param {{
  *   onToken?: (token: string) => void,
  *   onRefreshFailed?: (err: Error) => void,
