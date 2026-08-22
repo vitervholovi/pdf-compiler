@@ -4,6 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { requireAccessToken } from './middleware/authLite.js';
+import { requireAllowedWorkspace } from './middleware/workspaceAccess.js';
 import { jobsRouter } from './routes/jobs.js';
 import { previewRouter } from './routes/preview.js';
 import { createPreviewStore } from './services/previews.js';
@@ -44,6 +45,9 @@ app.use(express.json({ limit: '2mb' }));
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
+
+// AUTH-07: workspace.id === "1" only (pages + API). Plain 404, no HTML.
+app.use(requireAllowedWorkspace);
 
 // All other /api/* require access JWT (Bearer or SSO cookie).
 app.use('/api', requireAccessToken);
