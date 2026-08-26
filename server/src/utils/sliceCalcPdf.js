@@ -4,6 +4,7 @@
  */
 import fs from 'fs/promises';
 import { PDFDocument } from 'pdf-lib';
+import { normalizePdf } from './normalizePdf.js';
 
 /** A4 landscape in PDF points */
 export const A4_LANDSCAPE = { width: 841.89, height: 595.28 };
@@ -13,8 +14,9 @@ export const A4_LANDSCAPE = { width: 841.89, height: 595.28 };
  * @returns {Promise<{ pagesIn: number, pagesOut: number }>}
  */
 export async function sliceCalcPdfToA4Landscape(pdfPath) {
+  await normalizePdf(pdfPath);
   const bytes = await fs.readFile(pdfPath);
-  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const src = await PDFDocument.load(bytes);
   const out = await PDFDocument.create();
   const { width: A4W, height: A4H } = A4_LANDSCAPE;
   const pagesIn = src.getPageCount();

@@ -3,6 +3,7 @@
  */
 import fs from 'fs/promises';
 import { PDFDocument, PDFName, PDFArray, PDFStream, PDFRawStream } from 'pdf-lib';
+import { normalizePdf } from './normalizePdf.js';
 
 function streamByteLength(obj) {
   if (!obj) return 0;
@@ -60,8 +61,9 @@ export function isLikelyEmptyPdfPage(page, minBytes = 48) {
  * @returns {Promise<{ removed: number, kept: number }>}
  */
 export async function stripEmptyPdfPages(pdfPath) {
+  await normalizePdf(pdfPath);
   const bytes = await fs.readFile(pdfPath);
-  const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const src = await PDFDocument.load(bytes);
   const total = src.getPageCount();
   if (total <= 1) return { removed: 0, kept: total };
 

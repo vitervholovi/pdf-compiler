@@ -6,6 +6,7 @@ import { resolveWatermarkFont } from '../utils/fonts.js';
 import { getPageVisualMetrics, withVisualCoords, visualBoxToDraw } from '../utils/pageCoords.js';
 import { getTextPlacement, getImagePlacement } from '../utils/watermarkPlacement.js';
 import { renderTextWatermarkPng, measureTextBlockPdf } from '../utils/textWatermarkImage.js';
+import { normalizePdf } from '../utils/normalizePdf.js';
 
 function hexToRgb(hex = '#000000') {
   const h = hex.replace('#', '');
@@ -173,8 +174,9 @@ async function embedImageBuffer(pdf, buf, preferJpeg = false) {
  * Apply text and/or image watermark layers onto a PDF file.
  */
 export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
+  await normalizePdf(pdfPath);
   const bytes = await fs.readFile(pdfPath);
-  const pdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const pdf = await PDFDocument.load(bytes);
   const pages = pdf.getPages();
 
   const textLayer = watermark?.text;

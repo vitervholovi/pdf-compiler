@@ -9,6 +9,7 @@ import { resolveDocumentFont } from '../utils/fonts.js';
 import { maybePrepareCalcFile } from '../utils/calcWorkbook.js';
 import { stripEmptyPdfPages } from '../utils/stripEmptyPdfPages.js';
 import { patchOdsPageLayoutForFitWidth } from '../utils/odsPageLayout.js';
+import { normalizePdf } from '../utils/normalizePdf.js';
 
 /** Serialize LibreOffice — concurrent soffice without unique profiles fails silently. */
 let libreOfficeChain = Promise.resolve();
@@ -299,6 +300,7 @@ export async function convertToPdf(inputPath, workDir, options = {}) {
 
   if (ext === 'pdf') {
     await fs.copyFile(inputPath, outPdf);
+    await normalizePdf(outPdf);
     return outPdf;
   }
 
