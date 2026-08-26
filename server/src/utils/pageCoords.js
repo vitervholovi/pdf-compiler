@@ -73,7 +73,8 @@ export function withVisualCoords(page, metrics, fn) {
  * O = C - Rθ(w/2, h/2).
  */
 export function visualBoxToDraw(left, top, boxW, boxH, visualH, cssRotDeg = 0) {
-  const pdfRotDeg = -(Number(cssRotDeg) || 0) || 0;
+  const cssDeg = Number(cssRotDeg);
+  const pdfRotDeg = Number.isFinite(cssDeg) ? -cssDeg || 0 : 0;
   const rad = (pdfRotDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);

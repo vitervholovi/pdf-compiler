@@ -7,6 +7,12 @@ export function pageOrientation(width, height) {
   return Number(width) >= Number(height) ? 'landscape' : 'portrait';
 }
 
+/** Parse rotation degrees; 0 is valid (do not use `||` with a non-zero fallback). */
+export function rotationDeg(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 export function defaultTransform(rotationDeg = -30) {
   return { xPct: 0.5, yPct: 0.5, wPct: 0.5, rotationDeg };
 }

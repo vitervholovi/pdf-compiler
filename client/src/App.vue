@@ -81,7 +81,7 @@
         :orientation="editOrientation"
       />
       <DocumentPreview
-        :key="`${selectedFile?.id || 'none'}:${selectedFile?.previewStatus}:${selectedFile?.previewEpoch || 0}`"
+        :key="selectedFile?.id || 'none'"
         :file="selectedFile"
         v-model:watermark="watermark"
         :watermark-image-file="watermarkImageFile"

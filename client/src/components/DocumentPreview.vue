@@ -10,7 +10,7 @@
     </div>
 
     <div class="stage-wrap" ref="wrap">
-      <p v-if="statusHint" class="hint">{{ statusHint }}</p>
+      <p class="hint" :class="{ 'hint--empty': !statusHint }">{{ statusHint || '\u00a0' }}</p>
 
       <div class="stage" :style="stageStyle">
         <div class="page-frame" aria-hidden="true">
@@ -106,6 +106,7 @@ import { tileGhostsFromPrimary } from '../utils/tiling.js';
 import { previewFontCssFamily } from '../utils/fonts.js';
 import {
   pageOrientation,
+  rotationDeg,
   getTextPlacement,
   getImagePlacement
 } from '../utils/watermarkModel.js';
@@ -158,6 +159,8 @@ const hasPdf = ref(false);
 const hasImage = ref(false);
 const handles = ['nw', 'ne', 'sw', 'se'];
 const stageReady = ref(false);
+/** Last orientation we fit the stage for — refit only when this changes or wrap resizes. */
+const fittedOrientation = ref(null);
 
 const wm = reactive(clonePlain(props.watermark));
 
@@ -186,8 +189,7 @@ watch(
   (ori) => {
     if (hasPdf.value || hasImage.value) return;
     if (ori !== 'landscape' && ori !== 'portrait') return;
-    pageSize.value = a4PageSizeFor(ori);
-    nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
+    applyPageOrientation(ori);
   }
 );
 
@@ -344,7 +346,7 @@ const textGhosts = computed(() => {
     primaryTop: p.top,
     boxW: p.w,
     boxH: p.h,
-    rotationDeg: place.transform.rotationDeg || 0,
+    rotationDeg: rotationDeg(place.transform.rotationDeg),
     spacingX: (Number(place.spacingX) || 0) * scale,
     spacingY: (Number(place.spacingY) || 0) * scale
   });
@@ -362,7 +364,7 @@ const imageGhosts = computed(() => {
     primaryTop: p.top,
     boxW: p.w,
     boxH: p.h,
-    rotationDeg: place.transform.rotationDeg || 0,
+    rotationDeg: rotationDeg(place.transform.rotationDeg),
     spacingX: (Number(place.spacingX) || 0) * scale,
     spacingY: (Number(place.spacingY) || 0) * scale
   });
@@ -395,15 +397,27 @@ const imageVisualStyle = computed(() => {
   };
 });
 
-function boxPosStyle(pos, rotationDeg = 0) {
-  const rot = Number(rotationDeg) || 0;
-  return {
+function boxPosStyle(pos, angleDeg = 0) {
+  const rot = rotationDeg(angleDeg);
+  const style = {
     left: `${pos.left}px`,
     top: `${pos.top}px`,
     width: `${pos.w}px`,
-    height: `${pos.h}px`,
-    transform: `rotate(${rot}deg)`
+    height: `${pos.h}px`
   };
+  if (rot !== 0) style.transform = `rotate(${rot}deg)`;
+  return style;
+}
+
+function applyPageOrientation(ori) {
+  const slot = ori === 'landscape' ? 'landscape' : 'portrait';
+  const next = a4PageSizeFor(slot);
+  const oriChanged = fittedOrientation.value !== slot;
+  pageSize.value = next;
+  if (oriChanged || !stageReady.value) {
+    fittedOrientation.value = slot;
+    nextTick(() => fitScale(next.w, next.h));
+  }
 }
 
 function fitScale(w, h) {
@@ -426,17 +440,15 @@ function resetBlank() {
     props.editOrientation === 'landscape' || props.editOrientation === 'portrait'
       ? props.editOrientation
       : 'portrait';
-  pageSize.value = a4PageSizeFor(ori);
-  nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
+  applyPageOrientation(ori);
 }
 
 function onDocImageLoad(e) {
   const img = e.target;
   const nw = img.naturalWidth || 595;
   const nh = img.naturalHeight || 842;
-  pageSize.value = a4PageSizeFor(pageOrientation(nw, nh));
   pageCount.value = 1;
-  nextTick(() => fitScale(pageSize.value.w, pageSize.value.h));
+  applyPageOrientation(pageOrientation(nw, nh));
 }
 
 async function loadPdfFromBuffer(data) {
@@ -551,11 +563,10 @@ async function renderPage() {
   // Use page's inherent rotation only — do not add extra rotation (avoids upside-down first page).
   const rotation = pdfPage.rotate || 0;
   const unscaled = pdfPage.getViewport({ scale: 1, rotation });
-  // Stage is always A4; orientation follows the real page.
-  pageSize.value = a4PageSizeFor(pageOrientation(unscaled.width, unscaled.height));
+  // Stage is always A4; orientation follows the real page (scale stays per orientation).
+  applyPageOrientation(pageOrientation(unscaled.width, unscaled.height));
   await nextTick();
   if (gen !== renderGen) return;
-  fitScale(pageSize.value.w, pageSize.value.h);
 
   const outputScale = Math.min(window.devicePixelRatio || 1, 2);
   // Render native page; CSS stretches canvas into the A4 stage.
@@ -714,7 +725,7 @@ function onRotateDown(e, kind) {
     cx,
     cy,
     startAngle: pointerAngle,
-    origRot: Number(place.transform.rotationDeg) || 0
+    origRot: rotationDeg(place.transform.rotationDeg)
   };
   e.currentTarget.setPointerCapture?.(e.pointerId);
   window.addEventListener('pointermove', onMove);

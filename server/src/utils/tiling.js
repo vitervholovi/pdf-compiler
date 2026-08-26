@@ -7,7 +7,8 @@
 
 /** Axis-aligned size of a box after rotation (degrees). */
 export function rotatedAabb(boxW, boxH, rotationDeg = 0) {
-  const rad = (((Number(rotationDeg) || 0) % 180) * Math.PI) / 180;
+  const deg = Number(rotationDeg);
+  const rad = (((Number.isFinite(deg) ? deg : 0) % 180) * Math.PI) / 180;
   const c = Math.abs(Math.cos(rad));
   const s = Math.abs(Math.sin(rad));
   return {

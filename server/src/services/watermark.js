@@ -257,7 +257,7 @@ export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
           const h = w * aspect;
           const xPct = t.xPct != null ? Number(t.xPct) : 0.5;
           const yPct = t.yPct != null ? Number(t.yPct) : 0.5;
-          const rotation = Number(t.rotationDeg) || 0;
+          const rotation = Number.isFinite(Number(t.rotationDeg)) ? Number(t.rotationDeg) : 0;
           const opacity = Math.min(Math.max(Number(place.opacity) ?? 0.3, 0), 1);
           const pattern = place.pattern || 'single';
           const primaryLeft = visualW * xPct - w / 2;
@@ -298,7 +298,7 @@ export async function applyWatermark(pdfPath, outPath, watermark, imagePath) {
         const lines = splitLines(textValue);
         const xPct = t.xPct != null ? Number(t.xPct) : 0.5;
         const yPct = t.yPct != null ? Number(t.yPct) : 0.5;
-        const rotation = Number(t.rotationDeg) || -30;
+        const rotation = Number.isFinite(Number(t.rotationDeg)) ? Number(t.rotationDeg) : -30;
         const opacity = Math.min(Math.max(Number(place.opacity) ?? 0.25, 0), 1);
         const pattern = place.pattern || 'single';
 
