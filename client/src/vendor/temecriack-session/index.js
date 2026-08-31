@@ -81,3 +81,14 @@ export {
   setToken,
   setTokenChangeHandler,
 } from './token.js'
+
+export {
+  ALLOWED_WORKSPACE_ID,
+  clearWorkspaceCache,
+  ensureWorkspaceId,
+  getCachedWorkspaceId,
+  isAllowedWorkspaceId,
+  normalizeWorkspaceId,
+  parseWorkspaceIdFromProfile,
+  setWorkspaceApiBase,
+} from './workspace.js'

@@ -13,6 +13,7 @@ import {
   extractToken,
   unwrapData,
 } from './payload.js'
+import { clearWorkspaceCache, setWorkspaceApiBase } from './workspace.js'
 
 export const AUTH_API_PROXY = '/temecriack/auth/api'
 
@@ -44,6 +45,8 @@ export function configureSession(options = {}) {
   if (typeof options.onAuthFailure === 'function') {
     onAuthFailure = options.onAuthFailure
   }
+  // Keep workspace profile fetches on the same auth API base as login/broker.
+  setWorkspaceApiBase(() => getApiBase())
 }
 
 export function notifyAuthFailure() {
@@ -113,6 +116,7 @@ export async function login(username, password) {
 
   const token = extractToken(data)
   if (!token) throw new Error('No access token in response')
+  clearWorkspaceCache()
   setAccessToken(token)
   return token
 }
@@ -140,6 +144,7 @@ export async function verifyLoginTwoFactor(pendingToken, code, username = '') {
   }
   const token = extractToken(data)
   if (!token) throw new Error('No access token in 2FA response')
+  clearWorkspaceCache()
   setAccessToken(token)
   return token
 }
@@ -193,6 +198,7 @@ export async function ensureAccessToken(opts = {}) {
     }
     const nextToken = extractToken(data)
     if (!nextToken) throw new Error('No access token in session access response')
+    if (nextToken !== bearer) clearWorkspaceCache()
     setAccessToken(nextToken)
     return nextToken
   })().finally(() => {
@@ -220,4 +226,5 @@ export async function logout() {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
   } catch {}
+  clearWorkspaceCache()
 }

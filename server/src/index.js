@@ -46,7 +46,8 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// AUTH-07: workspace.id === "1" only (pages + API). Plain 404, no HTML.
+// AUTH-10: confirmed workspace.id === "1" only. SPA: missing/unresolved auth
+// passes through for SDK login/refresh; wrong workspace → plain 404; /api/* needs allowed.
 app.use(requireAllowedWorkspace);
 
 // All other /api/* require access JWT (Bearer or SSO cookie).
